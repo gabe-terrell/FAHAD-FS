@@ -23,13 +23,13 @@ def main(argv):
         flag = sys.argv[1]
     except:
         usage_error()
-    
+
     if flag == "-v":
         if len(sys.argv) == 2:
             file_viewer()
         else:
             usage_error()
-    
+
     elif flag == "-d":
         try:
             assert len(sys.argv) == 4
@@ -53,5 +53,5 @@ def main(argv):
     else:
         usage_error()
 
-if __name__ == '__main__': 
-    main(sys.argv) 
+if __name__ == '__main__':
+    main(sys.argv)
