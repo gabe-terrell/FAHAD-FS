@@ -18,23 +18,23 @@ def upload(local_file_path, server_dir):
     print("upload " + local_file_path + " to " + server_dir)
 
 
-def main(argv):
+def main(argc, argv):
     try:
-        flag = sys.argv[1]
+        flag = argv[1]
     except:
         usage_error()
     
     if flag == "-v":
-        if len(sys.argv) == 2:
+        if argc == 2:
             file_viewer()
         else:
             usage_error()
     
     elif flag == "-d":
         try:
-            assert len(sys.argv) == 4
-            sever_file_path = sys.argv[2]
-            local_dir = sys.argv[3]
+            assert argc == 4
+            sever_file_path = argv[2]
+            local_dir = argv[3]
         except:
             usage_error()
         else:
@@ -42,9 +42,9 @@ def main(argv):
 
     elif flag == "-u":
         try:
-            assert len(sys.argv) == 4
-            local_file_path = sys.argv[2]
-            server_dir = sys.argv[3]
+            assert argc == 4
+            local_file_path = argv[2]
+            server_dir = argv[3]
         except:
             usage_error()
         else:
@@ -54,4 +54,4 @@ def main(argv):
         usage_error()
 
 if __name__ == '__main__': 
-    main(sys.argv) 
+    main(len(sys.argv), sys.argv) 
