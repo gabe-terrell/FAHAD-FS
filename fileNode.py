@@ -9,21 +9,24 @@ import threading
 
 class FileNode:
 
+    ### TODO: threaded nodeserver
     def __init__(self, masterAddr, serverPort = 90000):
 
         self.masterAddr = masterAddr
         self.port       = serverPort
-        self.nodeID     = None
-        self.server     = None
-        self.dir        = None
+        self.nodeID     = self.getNodeID()
+        self.dir        = self.openDir()
+        self.server     = NodeServer(self.port)
 
-    def assignNodeID(self):
+    def getNodeID(self):
 
-        self.nodeID = 1
-        print "Node ID: ", int(self.nodeID)
-        # connect to master node
-        # send master node list of directories i have access to
-        # master node will reply with the directory i should use
+        nodeID = 1
+        print "Node ID: ", int(nodeID)
+        return nodeID
+        # TODO
+        # 1. client-connect to master node
+        # 2.send master node list of directories i have access to
+        # 3. master node will reply with the directory i should use
 
     def openDir(self):
 
@@ -43,12 +46,18 @@ class FileNode:
 
         print "Current node contents: ", self.dir
 
+    def saveState(self):
+        print "Saving filesystem chunk state to disk..."
+        pickle.dump(self.dir, self.dirfile)
+        print "FS saved to disk."
 
     def runServer(self):
-        self.server = Server(self.port)
         self.server.listen()
 
-class Server():
+
+
+
+class NodeServer():
 
     def __init__(self, port):
 
@@ -62,23 +71,21 @@ class Server():
     def listen(self):
 
         self.sock.listen(5)
-
         while True:
-
             print "File node waiting for connections from the mothership..."
             clisock, cliAddr = self.sock.accept()
             clisock.settimeout(self.timeout)
-            threading.Thread(target = self.listenToClient,
-                             args   = (clisock,cliAddr)).start()
+
+            cliThread = threading.Thread( target = self.listenToClient,
+                                          args   = (clisock,cliAddr))
+            cliThread.start()
 
 
 
     def listenToClient(self, clisock, cliAddr):
 
         BUFSIZE = 1024
-
         while True:
-
             try:
                 data = clisock.recv(BUFSIZE)
                 if data:
@@ -104,8 +111,6 @@ def main(argv):
         usage_error()
 
     fnode = FileNode(masterAddr, serverPort = portnum)
-    fnode.assignNodeID()
-    fnode.openDir()
     fnode.runServer()
 
 if __name__ == '__main__':
