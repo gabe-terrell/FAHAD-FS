@@ -6,6 +6,7 @@ import time
 import socket
 import pickle
 import threading
+from threadedServer import threadedServer
 
 class FileNode:
 
@@ -55,9 +56,7 @@ class FileNode:
         self.server.listen()
 
 
-
-
-class NodeServer():
+class NodeServer(threadedServer):
 
     def __init__(self, port):
 
