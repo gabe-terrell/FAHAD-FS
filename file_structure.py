@@ -68,5 +68,5 @@ class File:
 		self.name = name
 		self.nodes = nodes
 
-# class Node:
-# 	# TODO
+class Node:
+	pass
