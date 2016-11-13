@@ -37,6 +37,7 @@ def file_viewer():
     res = message_server(s, Request('init'))
 
     if 'output' in res and res['output'] == 'OK':
+        print "Connected to file viewer"
         while True:
             command = raw_input()
             res = message_server(s, Request(command))
@@ -44,6 +45,7 @@ def file_viewer():
             if 'output' in res:
                 output = res['output']
                 if output == None:
+                    s.close()
                     sys.exit()
                 if output:
                     print output

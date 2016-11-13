@@ -8,6 +8,7 @@ class RequestType(object):
 class ClientRequest(object):
 	def __init__(self, type, command = None, serverPath = None):
 		self.type = type
+		self.command = command
 		self.serverPath = serverPath
 
 	def toJson(self):

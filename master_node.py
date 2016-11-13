@@ -1,10 +1,14 @@
-import sys
+import sys, setup, json
 from threading import Thread
 from threaded_server import ThreadedServer
 from file_structure import Directory, File, Node
+from client_server_protocol import RequestType, ClientResponse
+from viewer import Viewer
 
-CLIENT_PORT = 9080
-NODE_PORT = 9090
+_, CLIENT_PORT = setup.SERVER_ADDR
+_, NODE_PORT = setup.NODE_ADDR
+
+BUFFER_SIZE = 1024
 
 class MasterNode():
 
@@ -32,9 +36,54 @@ class MasterNode():
 		server.listen()
 
 	def handleClientRequest(self, socket, address):
-		# TODO: Handle upload/download request
+		viewer = Viewer(self.root)
+
+		# TODO: This is disgusting to look at right now
+		while True:
+			try:
+				data = socket.recv(BUFFER_SIZE)
+
+				if data:
+					request = json.loads(data)
+
+					if 'type' in request:
+						type = request['type']
+
+						if type == RequestType.viewer:
+							if 'command' in request:
+								command = request['command']
+								self.handleViewerRequest(socket, viewer, command)
+							else:
+								raise error("Invalid Command Request")
+						elif type == RequestType.download:
+							pass
+						elif type == RequestType.upload:
+							pass
+						else:
+							raise error("Invalid Type Request")
+					else:
+						raise error("Invalid Client Request")
+				else:
+					raise error("Client disconnected")
+			except:
+				socket.close()
+				return
+
+	def handleViewerRequest(self, socket, viewer, command):
+		if command == 'init':
+			output = 'OK'
+		else:
+			argv = command.split()
+			output = viewer.process(len(argv), argv)
+		response = ClientResponse(RequestType.viewer, output)
+		socket.send(response.toJson())
+	
+
+	def handleDownloadRequest(self, socket, path):
 		pass
 
+	def handleUploadRequest(self, socket, path, file):
+		pass
 
 	def handleNodeConnection(self, socket, address):
 		# TODO: Handle request to create new file node
@@ -52,4 +101,4 @@ def main(argc, argv):
 
 
 if __name__ == '__main__':
-    main(len(sys.argv), sys.argv)
+	main(len(sys.argv), sys.argv)
