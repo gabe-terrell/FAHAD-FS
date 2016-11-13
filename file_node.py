@@ -6,7 +6,7 @@ import time
 import socket
 import pickle
 import threading
-from threadedServer import threadedServer
+from threaded_server import threadedServer
 
 class FileNode:
 

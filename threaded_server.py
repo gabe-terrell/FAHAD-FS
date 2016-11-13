@@ -16,7 +16,7 @@ class ThreadedServer(object):
 
         self.sock.listen(5)
         while True:
-            print "File node waiting for connections from the mothership..."
+            print "Server waiting for connections from the mothership..."
             clisock, cliAddr = self.sock.accept()
             print "Connection established"
             clisock.settimeout(self.timeout)
@@ -47,9 +47,9 @@ class ThreadedServer(object):
                 clisock.close()
                 break
 
-if __name__ == '__main__': 
+if __name__ == '__main__':
     port = 9091
-    
+
     if len(sys.argv) > 2:
         print "Usage: threadedServer <port=9091>"
         sys.exit()
@@ -59,7 +59,7 @@ if __name__ == '__main__':
         except:
             print "Usage: threadedServer <port=9091>"
             sys.exit()
-    
+
     print "Listening on port " + str(port) + "..."
     server = ThreadedServer(port)
     server.listen()
