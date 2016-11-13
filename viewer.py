@@ -12,23 +12,30 @@ class Viewer:
         while True:
             argv = raw_input().split()
             argc = len(argv)
-            self.process(argc, argv)
+            result = self.process(argc, argv)
+
+            # result only returns None if exit was called
+            # otherwise, ignore empty output
+            if result == None:
+                sys.exit()
+            if result:
+                print result
 
     def process(self, argc, argv):
         if argc == 0:
-            return
+            return ''
 
         command = argv[0]
 
         if command == 'ls':
             if argc != 1:
-                self.usage_error()
+                return self.usage_error()
             else:
-                print self.cur_dir.ls()
+                return self.cur_dir.ls()
 
         elif command == 'cd':
             if argc != 2:
-                self.usage_error()
+                return self.usage_error()
             else:
                 raw_path = argv[1]
                 if raw_path == '/':
@@ -42,47 +49,51 @@ class Viewer:
                 
                 if result:
                     self.cur_dir = result
+                    return ''
                 else:
-                    print "No such directory"
+                    return "No such directory"
 
         elif command == 'mkdir':
             if argc != 2:
-                self.usage_error()
+                return self.usage_error()
             else:
                 dir_name = argv[1]
                 if '/' in dir_name:
-                    print "Invalid directory name"
+                    return "Invalid directory name"
                 else:
                     self.cur_dir.mkdir(dir_name)
+                    return ''
 
         elif command == 'pwd':
             if argc != 1:
-                self.usage_error()
+                return self.usage_error()
             else:
-                print self.cur_dir.pwd()
+                return self.cur_dir.pwd()
 
         elif command == 'help':
             if argc != 1:
-                self.usage_error()
+                return self.usage_error()
             else:
-                self.help()
+                return self.help()
 
         elif command == 'exit':
-            sys.exit()
+            return None
 
         else:
-            self.usage_error()
+            return self.usage_error()
 
     def usage_error(self):
-        print "Invalid usage: use 'help' for valid commands"
+        return "Invalid usage: use 'help' for valid commands"
 
     def help(self):
-        print "Valid commands:"
-        print "     - ls"
-        print "     - cd <path>"
-        print "     - mkdir <directory>"
-        print "     - pwd"
-        print "     - exit"
+        return (
+            "Valid commands:\n"
+            "     - ls\n"
+            "     - cd <path>\n"
+            "     - mkdir <directory>\n"
+            "     - pwd\n"
+            "     - exit"
+            )
 
 if __name__ == '__main__': 
     root = Directory('')
