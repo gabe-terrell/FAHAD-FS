@@ -111,9 +111,9 @@ class MasterNode():
                         raise error("Bad request to master node.")
 
                 else:
-                    print "No data received from client"
+                    print "No data received from client..."
                     sys.stdout.flush()
-                    print "Client Disconnected"
+                    print "Client disconnected."
             except:
                 clisock.close()
 
