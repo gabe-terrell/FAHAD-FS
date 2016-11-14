@@ -45,10 +45,9 @@ class FileNode:
 
             if not 'type' in response:
                 raise error("Master sent bad response.")
-            #
-            # if response['type'] is MasterResponseType.nodeid:
-            #     nodeID = int(response['data'])
-            nodeID = int(response["data"])
+
+            if response["type"] is MasterResponseType.nodeid:
+                nodeID = int(response['data'])
 
             # TODO: echo contents of directory back to server to affirm
             # correct contents. Could echo checksums to confirm data integrity

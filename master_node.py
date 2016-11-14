@@ -1,4 +1,4 @@
-import sys, setup, json
+import sys, setup, json, os
 from threading import Thread
 from threaded_server import ThreadedServer
 from file_structure import Directory, File, Node
@@ -92,14 +92,17 @@ class MasterNode():
         while True:
 
             try:
-
                 data = socket.recv(setup.BUFSIZE)
+
                 if data:
                     request = json.loads(data)
                     print "ID Query Request: " + str(request)
+
                     if not 'type' in request:
                         raise error("Filenode sent bad request.")
+
                     type = request['type']
+
                     if type is NodeRequestType.idquery:
 
                         # TODO: check request['data']
@@ -119,9 +122,12 @@ class MasterNode():
                     print "Client disconnected."
 
             except Exception, ex:
-                print "Exception \n" + str(ex) + "\n was raised. Closing socket...\n"
+                print "An exception with name \n" + str(ex) + \
+                      "\n was raised. Closing socket...\n"
                 socket.close()
-                return
+                break
+
+            return
 
 
 
