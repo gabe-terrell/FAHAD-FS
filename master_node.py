@@ -4,6 +4,7 @@ from threaded_server import ThreadedServer
 from file_structure import Directory, File, Node
 from client_server_protocol import RequestType, ClientResponse
 from filenode_master_protocol import NodeRequestType, MasterResponseType
+from filenode_master_protocol import MasterResponse
 from viewer import Viewer
 
 _, CLIENT_PORT = setup.MASTER_CLIENT_ADDR
@@ -15,8 +16,8 @@ class MasterNode():
 
         self.root = Directory('')
         self.nodes = []
-        self.clientServer = ThreadedServer(CLIENT_PORT)
-        self.nodeServer = ThreadedServer(NODE_PORT)
+        self.clientServer = ThreadedServer(setup.MASTER_CLIENT_ADDR)
+        self.nodeServer = ThreadedServer(setup.MASTER_NODE_ADDR)
 
     def start(self):
 
@@ -26,7 +27,7 @@ class MasterNode():
         clientThread = Thread(target=target, args=[self.clientServer])
         clientThread.start()
 
-        self.nodeServer.handler = self.handleNodeStartup
+        self.nodeServer.handler = self.handleNodeRequest
         nodeThread = Thread(target=target, args=[self.nodeServer])
         nodeThread.start()
 
@@ -84,28 +85,30 @@ class MasterNode():
     def handleUploadRequest(self, socket, path, file):
         pass
 
-    def handleNodeStartup(self, socket, address):
+    def handleNodeRequest(self, socket, address):
 
         # figure out nicer way for handling all the different request types with
         # their own functions
         while True:
+
             try:
-                data = clisock.recv(setup.BUFSIZE)
+
+                data = socket.recv(setup.BUFSIZE)
                 if data:
                     request = json.loads(data)
+                    print "ID Query Request: " + str(request)
                     if not 'type' in request:
                         raise error("Filenode sent bad request.")
-
                     type = request['type']
                     if type is NodeRequestType.idquery:
 
                         # TODO: check request['data']
                         #       look at available dirs and check against which
-                        #         nodes are already running
+                        #       nodes are already running
 
-                        response = MasterResponse(MasterResponseType.nodeid, [1])
+                        response = MasterResponse(MasterResponseType.nodeid, 1)
                         socket.send(response.toJson())
-                        clisock.close()
+                        socket.close()
 
                     elif type is NodeRequestType.upload:
                         raise error("Bad request to master node.")
@@ -114,8 +117,11 @@ class MasterNode():
                     print "No data received from client..."
                     sys.stdout.flush()
                     print "Client disconnected."
-            except:
-                clisock.close()
+
+            except Exception, ex:
+                print "Exception \n" + str(ex) + "\n was raised. Closing socket...\n"
+                socket.close()
+                return
 
 
 

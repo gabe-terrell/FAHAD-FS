@@ -2,10 +2,11 @@ import sys, socket, threading
 
 class ThreadedServer(object):
 
-    def __init__(self, port, handler=None):
+    def __init__(self, (hostaddr, portnum), handler=None):
 
-        self.host = socket.gethostname()
-        self.port = port
+        #socket.gethostname() # was causing issues on localhost
+        self.host = hostaddr
+        self.port = portnum
         self.handler = handler
         self.timeout = 60 # seconds
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -16,10 +17,11 @@ class ThreadedServer(object):
 
         self.sock.listen(5)
         while True:
-            print "Server waiting for connections at " + self.host
-            print "on port " + str(self.port)
+
+            print "Server at " + str(self.host) + \
+                  " listening on port " + str(self.port) + "\n"
             clisock, cliAddr = self.sock.accept()
-            print "Connection established with " + cliAddr
+            print "Connection established with " + str(cliAddr)
             clisock.settimeout(self.timeout)
 
             target = self.handler if self.handler else self.listenToClient
@@ -27,10 +29,10 @@ class ThreadedServer(object):
                                           args   = (clisock,cliAddr))
             cliThread.start()
 
+
     def listenToClient(self, clisock, cliAddr):
 
         BUFSIZE = 1024
-
         while True:
             try:
                 data = clisock.recv(BUFSIZE)
@@ -43,7 +45,6 @@ class ThreadedServer(object):
                 else:
                     print "No data received from client"
                     sys.stdout.flush()
-                    print "Client Disconnected"
             except:
                 clisock.close()
                 break

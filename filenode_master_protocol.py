@@ -28,7 +28,11 @@ class NodeRequest(object):
         self.data = data
 
     def toJson(self):
+        if type is None:
+            raise error("Cannot make uninitialized node request to JSON.")
         return json.dumps({'type': self.type, 'data': self.data})
+
+
 
 class MasterResponse(object):
 
@@ -38,6 +42,8 @@ class MasterResponse(object):
 
     def toJson(self):
         return json.dumps({'type': self.type, 'data': self.data})
+
+
 
 class MasterRequest(object):
 

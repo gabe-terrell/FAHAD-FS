@@ -1,6 +1,7 @@
 # file node for distributed file system
 
 import os
+import re
 import sys
 import time
 import socket
@@ -8,6 +9,7 @@ import pickle
 import setup
 import threading
 import json
+from filenode_master_protocol import *
 from threaded_server import ThreadedServer
 
 NODE_FILEPATH = "./nodefiles/"
@@ -22,31 +24,43 @@ class FileNode:
         self.port       = serverPort
         self.nodeID     = self.getNodeID()
         self.dir        = self.openDir()
-        self.server     = ThreadedServer(serverPort)
+        self.server     = ThreadedServer(setup.FILE_NODE_ADDR)
 
     def getNodeID(self):
 
         dirs = os.listdir(NODE_FILEPATH)
-        request = json.dumps(dirs)
-        print "Starting file node"
-        print "List of eligible directories: " + request
+        # uses regex to pull integers out of directory filenames
+        ids = [int(re.findall('\d+', d).pop()) for d in dirs]
+        request = NodeRequest(NodeRequestType.idquery, ids).toJson()
         clientsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         try:
-            print "Attempting connection to " + str(setup.MASTER_NODE_ADDR)
-            clientsocket.connect((localhost, 9090))
+
+            clientsocket.connect(setup.MASTER_NODE_ADDR)
             clientsocket.send(request)
+            print "ID REQUEST: " + request
             response = clientsocket.recv(setup.BUFSIZE)
+            print "ID RESPONSE: " + response
+            response = json.loads(response)
+
+            if not 'type' in response:
+                raise error("Master sent bad response.")
+            #
+            # if response['type'] is MasterResponseType.nodeid:
+            #     nodeID = int(response['data'])
+            nodeID = int(response["data"])
+
             # TODO: echo contents of directory back to server to affirm
             # correct contents. Could echo checksums to confirm data integrity
-            print "Starting file node on directory dump: " + response
-        except:
-            print "Unable to connect to master node."
-            # sys.exit()
 
+        except Exception, ex:
+
+            print "Unable to obtain filenode ID becuase exception \n" + \
+            str(ex) + "\n" + " was raised. Shutting down."
+            sys.exit()
 
         clientsocket.close()
-        nodeID = 1
+        print "Filenode has ID: " + str(nodeID)
         return nodeID
 
     def openDir(self):
