@@ -16,9 +16,10 @@ class ThreadedServer(object):
 
         self.sock.listen(5)
         while True:
-            print "Server waiting for connections from the mothership..."
+            print "Server waiting for connections at " + self.host
+            print "on port " + str(self.port)
             clisock, cliAddr = self.sock.accept()
-            print "Connection established"
+            print "Connection established with " + cliAddr
             clisock.settimeout(self.timeout)
 
             target = self.handler if self.handler else self.listenToClient
@@ -42,7 +43,7 @@ class ThreadedServer(object):
                 else:
                     print "No data received from client"
                     sys.stdout.flush()
-                    raise error("Client disconnected")
+                    print "Client Disconnected"
             except:
                 clisock.close()
                 break

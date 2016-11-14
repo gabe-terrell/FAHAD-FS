@@ -5,29 +5,49 @@ import sys
 import time
 import socket
 import pickle
+import setup
 import threading
-from threaded_server import threadedServer
+import json
+from threaded_server import ThreadedServer
+
+NODE_FILEPATH = "./nodefiles/"
+NODESERVER_ADDR, NODESERVER_PORT  = setup.FILE_NODE_ADDR
+
 
 class FileNode:
 
-    ### TODO: threaded nodeserver
-    def __init__(self, masterAddr, serverPort = 90000):
+    def __init__(self, masterAddr = NODESERVER_ADDR, serverPort = NODESERVER_PORT):
 
         self.masterAddr = masterAddr
         self.port       = serverPort
         self.nodeID     = self.getNodeID()
         self.dir        = self.openDir()
-        self.server     = NodeServer(self.port)
+        self.server     = ThreadedServer(serverPort)
 
     def getNodeID(self):
 
+        dirs = os.listdir(NODE_FILEPATH)
+        request = json.dumps(dirs)
+        print "Starting file node"
+        print "List of eligible directories: " + request
+        clientsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        try:
+            print "Attempting connection to " + str(setup.MASTER_NODE_ADDR)
+            clientsocket.connect((localhost, 9090))
+            clientsocket.send(request)
+            response = clientsocket.recv(setup.BUFSIZE)
+            # TODO: echo contents of directory back to server to affirm
+            # correct contents. Could echo checksums to confirm data integrity
+            print "Starting file node on directory dump: " + response
+        except:
+            print "Unable to connect to master node."
+            # sys.exit()
+
+
+        clientsocket.close()
         nodeID = 1
-        print "Node ID: ", int(nodeID)
         return nodeID
-        # TODO
-        # 1. client-connect to master node
-        # 2.send master node list of directories i have access to
-        # 3. master node will reply with the directory i should use
 
     def openDir(self):
 
@@ -35,7 +55,7 @@ class FileNode:
             print "Opening filenode subsystem before nodeID is set."
             sys.exit()
         else:
-            filename = "nodedump" + str(self.nodeID) + ".dir"
+            filename = NODE_FILEPATH + "nodedump" + str(self.nodeID) + ".dir"
 
         if os.path.isfile(filename):
             self.dirfile = open(filename, "rwb+")
@@ -56,60 +76,13 @@ class FileNode:
         self.server.listen()
 
 
-class NodeServer(threadedServer):
-
-    def __init__(self, port):
-
-        self.host = socket.gethostbyname('')
-        self.port = port
-        self.timeout = 60 # seconds
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind((self.host, self.port))
-
-    def listen(self):
-
-        self.sock.listen(5)
-        while True:
-            print "File node waiting for connections from the mothership..."
-            clisock, cliAddr = self.sock.accept()
-            clisock.settimeout(self.timeout)
-
-            cliThread = threading.Thread( target = self.listenToClient,
-                                          args   = (clisock,cliAddr))
-            cliThread.start()
-
-
-
-    def listenToClient(self, clisock, cliAddr):
-
-        BUFSIZE = 1024
-        while True:
-            try:
-                data = clisock.recv(BUFSIZE)
-                if data:
-                    response = data
-                    clisock.send(response)
-                else:
-                    raise error("Client disconnected")
-            except:
-                clisock.close()
-
-
-
 def usage_error():
     print "Usage: python fileNode.py <PORTNUM> <MASTER_IP>"
     sys.exit()
 
 def main(argv):
 
-    try:
-        portnum     = int(sys.argv[1])
-        masterAddr  = sys.argv[2]
-    except:
-        usage_error()
-
-    fnode = FileNode(masterAddr, serverPort = portnum)
+    fnode = FileNode()
     fnode.runServer()
 
 if __name__ == '__main__':
