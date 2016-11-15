@@ -1,5 +1,5 @@
 import sys, os, ntpath, socket, json
-from setup import SERVER_ADDR
+from setup import MASTER_CLIENT_ADDR
 from client_server_protocol import RequestType, ClientRequest
 
 BUFFER_SIZE = 1024
@@ -16,7 +16,7 @@ def server_error():
 
 def connect_to_server():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(SERVER_ADDR)
+    s.connect(MASTER_CLIENT_ADDR)
     return s
 
 def message_server(s, message):
@@ -42,9 +42,10 @@ def file_viewer():
             command = raw_input()
             res = message_server(s, Request(command))
             
-            if 'output' in res:
+            if 'output' in res and 'success' in res:
                 output = res['output']
-                if output == None:
+                success = res['success']
+                if not success:
                     s.close()
                     sys.exit()
                 if output:
@@ -59,8 +60,20 @@ def download(sever_file_path, local_dir):
 
 
 def upload(local_file_path, server_dir):
-    print("upload " + local_file_path + " to " + server_dir)
 
+    def Request(path, size):
+        return ClientRequest(RequestType.upload, serverPath=path, filesize=size)
+
+    try:
+        with open(local_file_path, 'r') as file:
+            size = os.path.getsize(local_file_path)
+            print "File found and opened! File Size: "
+            print size
+            s = connect_to_server()
+            res = message_server(s, Request(server_dir, size))
+            print res
+    except:
+        print "File not found"
 
 def main(argc, argv):
     try:

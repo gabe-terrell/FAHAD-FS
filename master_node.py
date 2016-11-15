@@ -38,31 +38,16 @@ class MasterNode():
         server.listen()
 
     def handleClientRequest(self, socket, address):
+
         viewer = Viewer(self.root)
 
-        # TODO: This is disgusting to look at right now
         while True:
             try:
                 data = socket.recv(setup.BUFSIZE)
-
                 if data:
                     request = json.loads(data)
-
                     if 'type' in request:
-                        type = request['type']
-
-                        if type == RequestType.viewer:
-                            if 'command' in request:
-                                command = request['command']
-                                self.handleViewerRequest(socket, viewer, command)
-                            else:
-                                raise error("Invalid Command Request")
-                        elif type == RequestType.download:
-                            pass
-                        elif type == RequestType.upload:
-                            pass
-                        else:
-                            raise error("Invalid Type Request")
+                        self.processClientRequest(socket, request, request['type'], viewer)
                     else:
                         raise error("Invalid Client Request")
                 else:
@@ -71,21 +56,56 @@ class MasterNode():
                 socket.close()
                 return
 
+    def processClientRequest(self, socket, request, type, viewer):
+
+    	if type == RequestType.viewer:
+    	    if 'command' in request:
+    	        command = request['command']
+    	        self.handleViewerRequest(socket, viewer, command)
+    	    else:
+    	        raise error("Invalid Viewer Request")
+    	elif type == RequestType.download:
+    	    pass
+    	elif type == RequestType.upload:
+    	    if 'path' and 'size' in request:
+    	    	path = request['path']
+    	    	size = request['size']
+    	    	self.handleUploadRequest(socket, path, size)
+    	    else:
+    	    	raise error("Invalid Download Request")
+    	else:
+    	    raise error("Invalid Type Request")
+
     def handleViewerRequest(self, socket, viewer, command):
+
         if command == 'init':
             output = 'OK'
         else:
             argv = command.split()
             output = viewer.process(len(argv), argv)
-        response = ClientResponse(RequestType.viewer, output)
+        response = ClientResponse(RequestType.viewer, output, output != None)
         socket.send(response.toJson())
 
 
     def handleDownloadRequest(self, socket, path):
         pass
 
-    def handleUploadRequest(self, socket, path, file):
-        pass
+    def handleUploadRequest(self, socket, path, filesize):
+
+    	def directoryError():
+    		response = ClientResponse(RequestType.upload, "Invalid server directory path", False)
+        	socket.send(response.toJson())
+
+        if path[0] == '/':
+        	dir = self.root.cd(path[1:].split('/'))
+        	if dir:
+        		# TODO: Log the data file, determine logic for getting data to node
+        		response = ClientResponse(RequestType.upload, "Initiating Upload", True)
+        		socket.send(response.toJson())
+        	else:
+        		directoryError()
+        else:
+        	directoryError()
 
     def handleNodeRequest(self, socket, address):
 
