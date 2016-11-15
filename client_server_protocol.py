@@ -6,18 +6,20 @@ class RequestType(object):
 	upload = 3
 
 class ClientRequest(object):
-	def __init__(self, type, command = None, serverPath = None, filesize = None):
+	def __init__(self, type, command = None, serverPath = None, filesize = None, name = None):
 		self.type = type
 		self.command = command
 		self.serverPath = serverPath
 		self.filesize = filesize
+		self.name = name
 
 	def toJson(self):
 		return json.dumps({
 			'type': self.type, 
 			'command': self.command, 
 			'path': self.serverPath,
-			'size': self.filesize
+			'size': self.filesize,
+			'name': self.name
 		})
 
 class ClientResponse(object):

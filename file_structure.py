@@ -19,7 +19,7 @@ class Directory:
 		if self.files:
 			output += "Files: \n"
 			for file in self.files:
-				print "     " + file.name + '\n'
+				output += "     " + file.name + '\n'
 
 		if not output:
 			return "Directory empty"

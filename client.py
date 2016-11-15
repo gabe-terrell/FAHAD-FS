@@ -1,8 +1,8 @@
 import sys, os, ntpath, socket, json
-from setup import MASTER_CLIENT_ADDR
+from setup import MASTER_CLIENT_ADDR, BUFSIZE
 from client_server_protocol import RequestType, ClientRequest
 
-BUFFER_SIZE = 1024
+BUFFER_SIZE = BUFSIZE
 
 def usage_error():
     print "Usage: client.py -v"
@@ -20,9 +20,11 @@ def connect_to_server():
     return s
 
 def message_server(s, message):
+    # print "Sending to server:\n" + message.toJson()
     s.send(message.toJson())
     response = s.recv(BUFFER_SIZE)
     if response:
+        # sys.stderr.write(response)
         return json.loads(response)
     else:
         server_error()
@@ -59,19 +61,46 @@ def download(sever_file_path, local_dir):
     print("download " + sever_file_path + " to " + local_dir)
 
 
+
 def upload(local_file_path, server_dir):
 
-    def Request(path, size):
-        return ClientRequest(RequestType.upload, serverPath=path, filesize=size)
+    def Request(path, size, name):
+        return ClientRequest(RequestType.upload, serverPath=path, filesize=size, name=name)
+
+    def filename(path):
+        head, tail = ntpath.split(path)
+        return tail or ntpath.basename(head)
 
     try:
         with open(local_file_path, 'r') as file:
             size = os.path.getsize(local_file_path)
-            print "File found and opened! File Size: "
-            print size
             s = connect_to_server()
-            res = message_server(s, Request(server_dir, size))
-            print res
+            res = message_server(s, Request(server_dir, size, filename(local_file_path)))
+            
+            print "Sending initial to server"
+            if res and 'success' in res and res['success']:
+                print res['output']
+            else:
+                server_error()
+
+            print "Sending Data"
+            while True:
+                data = file.read(BUFFER_SIZE)
+                if data:
+                    s.send(data)
+                else:
+                    break
+
+            print "Awaiting Receipt"
+            res = s.recv(BUFFER_SIZE)
+            if res:
+                res = json.loads(res)
+                if 'output' in res:
+                    print res['output']
+                else:
+                    server_error()
+            else:
+                server_error()
     except:
         print "File not found"
 

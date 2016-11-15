@@ -11,6 +11,10 @@ from viewer import Viewer
 _, CLIENT_PORT = setup.MASTER_CLIENT_ADDR
 _, NODE_PORT = setup.MASTER_NODE_ADDR
 
+def tprint(obj):
+    print obj
+    sys.stdout.flush()
+
 class MasterNode():
 
     def __init__(self, registryFile = None):
@@ -57,27 +61,26 @@ class MasterNode():
                 return
 
     def processClientRequest(self, socket, request, type, viewer):
-
-    	if type == RequestType.viewer:
-    	    if 'command' in request:
-    	        command = request['command']
-    	        self.handleViewerRequest(socket, viewer, command)
-    	    else:
-    	        raise error("Invalid Viewer Request")
-    	elif type == RequestType.download:
-    	    pass
-    	elif type == RequestType.upload:
-    	    if 'path' and 'size' in request:
-    	    	path = request['path']
-    	    	size = request['size']
-    	    	self.handleUploadRequest(socket, path, size)
-    	    else:
-    	    	raise error("Invalid Download Request")
-    	else:
-    	    raise error("Invalid Type Request")
+        if type == RequestType.viewer:
+            if 'command' in request:
+                command = request['command']
+                self.handleViewerRequest(socket, viewer, command)
+            else:
+                raise error("Invalid Viewer Request")
+        elif type == RequestType.download:
+            pass
+        elif type == RequestType.upload:
+            try:
+                path = request['path']
+                size = request['size']
+                name = request['name']
+            else:
+                self.handleUploadRequest(socket, path, size, name)
+        else:
+            raise error("Invalid Type Request")
 
     def handleViewerRequest(self, socket, viewer, command):
-
+        tprint("Viewer Request: " + command)
         if command == 'init':
             output = 'OK'
         else:
@@ -90,22 +93,53 @@ class MasterNode():
     def handleDownloadRequest(self, socket, path):
         pass
 
-    def handleUploadRequest(self, socket, path, filesize):
+    def handleUploadRequest(self, socket, path, filesize, filename):
+        tprint("Received Request to upload " + filename + " (" + str(filesize) + ") to" + path)
 
-    	def directoryError():
-    		response = ClientResponse(RequestType.upload, "Invalid server directory path", False)
-        	socket.send(response.toJson())
+        def error(message):
+            response = ClientResponse(RequestType.upload, message, False)
+            socket.send(response.toJson())
+            tprint("Upload Failed: " + message)
 
         if path[0] == '/':
-        	dir = self.root.cd(path[1:].split('/'))
-        	if dir:
-        		# TODO: Log the data file, determine logic for getting data to node
-        		response = ClientResponse(RequestType.upload, "Initiating Upload", True)
-        		socket.send(response.toJson())
-        	else:
-        		directoryError()
+            dir = self.root.cd(path[1:].split('/'))
+            if dir:
+                tempfile = "./" + filename # TODO: This should be changed to the hash of the filename
+                try:
+                    with open(tempfile, 'w') as file:
+                        # TODO: Log the data file, determine logic for getting data to node
+                        tprint("Sending upload ACK to client")
+                        response = ClientResponse(RequestType.upload, "Initiating Upload...", True)
+                        socket.send(response.toJson())
+
+                        tprint("Reading content from client")
+                        extraRead = 1 if filesize % setup.BUFSIZE != 0 else 0
+                        receptions = (filesize / setup.BUFSIZE) + extraRead
+                        for _ in range(receptions):
+                            data = socket.recv(setup.BUFSIZE)
+                            if data:
+                                file.write(data)
+                            else:
+                                error("Not enough data sent")
+                                return
+
+                        # NOTE: File has not been closed, because it's not expected to save to master
+                        tprint("Upload success!")
+
+                        response = ClientResponse(RequestType.upload, "Upload Complete!", True)
+                        socket.send(response.toJson())
+
+                        file = File(filename)
+                        dir.files.append(file)
+
+                        # TODO: Send file to file nodes
+                        # NOTE: This may involve setting the file point back to the begging of file
+                except:
+                    error("Server Error buffering space to save file")
+            else:
+                error("Directory path was not found")
         else:
-        	directoryError()
+            error("Directory must start with '/'")
 
     def handleNodeRequest(self, socket, address):
 
@@ -151,11 +185,18 @@ class MasterNode():
 
             return
 
-
-
+# Should fix the silly printing issues
+class Unbuffered(object):
+   def __init__(self, stream):
+       self.stream = stream
+   def write(self, data):
+       self.stream.write(data)
+       self.stream.flush()
+   def __getattr__(self, attr):
+       return getattr(self.stream, attr)
 
 def main(argc, argv):
-
+    sys.stdout = Unbuffered(sys.stdout)
     mnode = MasterNode()
     # can create new masternode every time or start from existing filesystem
     # mnode = MasterNode(setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME)
