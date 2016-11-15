@@ -68,16 +68,17 @@ class FileNode:
             print "Opening filenode subsystem before nodeID is set."
             sys.exit()
         else:
-            filename = NODE_FILEPATH + "nodedump" + str(self.nodeID) + ".dir"
+            filename = NODE_FILEPATH + "nodedump" + str(self.nodeID) + ".data"
 
         if os.path.isfile(filename):
             self.dirfile = open(filename, "rwb+")
             self.dir = pickle.load(self.dirfile)
+
         else:
             self.dirfile = open(filename, "w+")
-            self.dir     = {}
-            pickle.dump(self.dir, self.dirfile)
+            self.dir     = {} # fresh local filesystem
 
+        self.saveState()
         print "Current node contents: ", self.dir
 
     def saveState(self):

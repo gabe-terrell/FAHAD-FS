@@ -5,6 +5,7 @@ from file_structure import Directory, File, Node
 from client_server_protocol import RequestType, ClientResponse
 from filenode_master_protocol import NodeRequestType, MasterResponseType
 from filenode_master_protocol import MasterResponse
+from master_registry import Registry
 from viewer import Viewer
 
 _, CLIENT_PORT = setup.MASTER_CLIENT_ADDR
@@ -12,10 +13,11 @@ _, NODE_PORT = setup.MASTER_NODE_ADDR
 
 class MasterNode():
 
-    def __init__(self):
+    def __init__(self, registryFile = None):
 
         self.root = Directory('')
         self.nodes = []
+        self.registry = Registry(registryFile)
         self.clientServer = ThreadedServer(setup.MASTER_CLIENT_ADDR)
         self.nodeServer = ThreadedServer(setup.MASTER_NODE_ADDR)
 
@@ -133,8 +135,10 @@ class MasterNode():
 
 
 def main(argc, argv):
-    # TODO
+
     mnode = MasterNode()
+    # can create new masternode every time or start from existing filesystem
+    # mnode = MasterNode(setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME)
     mnode.start()
 
 
