@@ -1,11 +1,11 @@
-import sys, setup, json, os
+import sys, setup, json, os, ast
 from threading import Thread
 from threaded_server import ThreadedServer
 from file_structure import Directory, File, Node
 from client_server_protocol import RequestType, ClientResponse
 from filenode_master_protocol import NodeRequestType, MasterResponseType
 from filenode_master_protocol import MasterResponse
-from master_registry import Registry
+from master_registry import Registry, Record
 from viewer import Viewer
 
 _, CLIENT_PORT = setup.MASTER_CLIENT_ADDR
@@ -20,10 +20,12 @@ class MasterNode():
     def __init__(self, registryFile = None):
 
         self.root = Directory('')
-        self.nodes = []
+        self.activeNodes = []
+        self.standbyNodes = []
         self.registry = Registry(registryFile)
         self.clientServer = ThreadedServer(setup.MASTER_CLIENT_ADDR)
         self.nodeServer = ThreadedServer(setup.MASTER_NODE_ADDR)
+
 
     def start(self):
 
@@ -74,7 +76,7 @@ class MasterNode():
                 path = request['path']
                 size = request['size']
                 name = request['name']
-            else:
+            except:
                 self.handleUploadRequest(socket, path, size, name)
         else:
             raise error("Invalid Type Request")
@@ -132,10 +134,11 @@ class MasterNode():
                         file = File(filename)
                         dir.files.append(file)
 
-                        # TODO: Send file to file nodes
-                        # NOTE: This may involve setting the file point back to the begging of file
+                        rec = Record(filename, file, self.activeNodes)
+                        self.registry.add(rec)
+                        self.connectToNode()
                 except:
-                    error("Server Error buffering space to save file")
+                    raise error("Server Error: buffering space to save file")
             else:
                 error("Directory path was not found")
         else:
@@ -143,8 +146,6 @@ class MasterNode():
 
     def handleNodeRequest(self, socket, address):
 
-        # figure out nicer way for handling all the different request types with
-        # their own functions
         while True:
 
             try:
@@ -152,30 +153,23 @@ class MasterNode():
 
                 if data:
                     request = json.loads(data)
-                    print "ID Query Request: " + str(request)
 
-                    if not 'type' in request:
+                    if not 'type' in request or not 'data' in request:
                         raise error("Filenode sent bad request.")
 
                     type = request['type']
 
                     if type is NodeRequestType.idquery:
+                        self.handleIDRequest(socket, request)
 
-                        # TODO: check request['data']
-                        #       look at available dirs and check against which
-                        #       nodes are already running
-
-                        response = MasterResponse(MasterResponseType.nodeid, 1)
-                        socket.send(response.toJson())
-                        socket.close()
-
-                    elif type is NodeRequestType.upload:
-                        raise error("Bad request to master node.")
+                    else:
+                        raise error("Bad request of type " +  str(type) + \
+                                    " to master node.")
 
                 else:
                     print "No data received from client..."
                     sys.stdout.flush()
-                    print "Client disconnected."
+                    print "Client lagging or disconnected."
 
             except Exception, ex:
                 print "An exception with name \n" + str(ex) + \
@@ -184,6 +178,41 @@ class MasterNode():
                 break
 
             return
+
+    def handleIDRequest(self, socket, request):
+
+        print "ID Query Request: " + str(request)
+        try:
+            query_nodes = request['data'] #ast.literal_eval(request['data'])
+            eligible_nodes = list(set(query_nodes) - set(self.activeNodes))
+
+            if not eligible_nodes:
+                # no eligible nodes exist
+                print "no eligible nodes"
+                print str(self.activeNodes)
+                print str(self.standbyNodes)
+                nodeID = max(self.activeNodes or [0]) + max(self.standbyNodes or [0]) + 1
+
+            else:
+                nodeID = eligible_nodes[0]
+
+            response = MasterResponse(MasterResponseType.nodeid, nodeID)
+            self.activeNodes.append(nodeID)
+            socket.send(response.toJson())
+
+            socket.close()
+
+        except Exception, ex:
+            print "An exception with name \n" + str(ex) + \
+                  "\n was raised. Sending shutdown signal to filenode."
+            socket.send(
+                MasterResponse(MasterResponseType.shutdown, '\0').toJson())
+
+
+
+    def connectToNode(self, filename):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        clientsocket.connect(setup.MASTER_NODE_ADDR)
 
 # Should fix the silly printing issues
 class Unbuffered(object):

@@ -13,13 +13,14 @@ class MasterRequestType(object):
     store = 1
     shutdown = 2
     delete = 3
-    get = 4
+    retrieve = 4
     copy = 5
 
 class NodeResponseType(object):
     done = 1
-    give = 2
+    push = 2
     notfound = 3
+    store_error = 4
 
 class NodeRequest(object):
 
@@ -47,10 +48,14 @@ class MasterResponse(object):
 
 class MasterRequest(object):
 
-    def __init__(self, type, tag, data):
+    def __init__(self, type, key, data):
         self.type = type
-        self.tag  = tag
+        self.key  = key
         self.data = data
+        self.len  = len
 
     def toJson(self):
-        return json.dumps({'type': self.type, 'tag': self.tag, 'data': self.data})
+        return json.dumps({'type': self.type,
+                           'key':  self.key,
+                           'data': self.data,
+                           'len':  self.len})

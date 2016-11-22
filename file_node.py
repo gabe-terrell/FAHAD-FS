@@ -26,6 +26,18 @@ class FileNode:
         self.dir        = self.openDir()
         self.server     = ThreadedServer(setup.FILE_NODE_ADDR)
 
+
+    def start(self):
+
+        target = self.__startServer
+
+        self.server.handler = self.handleConnection
+        serverThread = Thread(target=target, args=[self.server])
+        serverThread.start()
+
+    def __startServer(self, server):
+        server.listen()
+
     def getNodeID(self):
 
         dirs = os.listdir(NODE_FILEPATH)
@@ -46,8 +58,16 @@ class FileNode:
             if not 'type' in response:
                 raise error("Master sent bad response.")
 
-            if response["type"] is MasterResponseType.nodeid:
+            if response['type'] is MasterResponseType.nodeid:
                 nodeID = int(response['data'])
+
+            elif response['type'] is MasterResponseType.shutdown:
+                print "Recieved shutdown signal from masternode."
+                sys.exit()
+
+            else:
+                print "Recieved invalid response type from masternode."
+                sys.exit()
 
             # TODO: echo contents of directory back to server to affirm
             # correct contents. Could echo checksums to confirm data integrity
@@ -57,6 +77,7 @@ class FileNode:
             print "Unable to obtain filenode ID becuase exception \n" + \
             str(ex) + "\n" + " was raised. Shutting down."
             sys.exit()
+            nodeID = -1
 
         clientsocket.close()
         print "Filenode has ID: " + str(nodeID)
@@ -86,8 +107,53 @@ class FileNode:
         pickle.dump(self.dir, self.dirfile)
         print "FS saved to disk."
 
-    def runServer(self):
+    def start(self):
         self.server.listen()
+
+    def handleConnection(self, socket, address):
+
+        # TODO: error checking and partial reads
+
+        while True:
+
+            try:
+                data = socket.recv(setup.BUFSIZE)
+
+                if not data: raise error("No data received from client.")
+                if not 'type' in request:
+                    raise error("Filenode sent bad request.")
+
+                request = json.loads(data)
+                type = request['type']
+
+                if type is MasterRequestType.store:
+                    self.dir[request['key']] = request['data']
+                    print self.dir[request['key']]
+
+                elif type is MasterRequestType.retrieve:
+                    # response = self.dir[request['key']]
+                    # socket.send(response)
+                    pass
+
+                elif type is MasterRequestType.delete:
+                    self.dir.pop(request['key'])
+                    # TODO: send done/notfound response
+
+                elif type is MasterRequestType.copy:
+                    pass
+                    # TODO: copy from src ip to dst ip
+
+                elif type is MasterRequestType.shutdown:
+                    sys.exit()
+
+            except Exception as ex:
+                print "An exception with name \n" + str(ex) + \
+                      "\n was raised. Closing socket...\n"
+                socket.close()
+                break
+
+    def initiateMasterConnect(self):
+        pass
 
 
 def usage_error():
@@ -97,7 +163,7 @@ def usage_error():
 def main(argv):
 
     fnode = FileNode()
-    fnode.runServer()
+    fnode.start()
 
 if __name__ == '__main__':
     main(sys.argv)
