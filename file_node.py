@@ -9,6 +9,7 @@ import pickle
 import setup
 import threading
 import json
+from subprocess import call
 from filenode_master_protocol import *
 from threaded_server import ThreadedServer
 
@@ -18,30 +19,30 @@ NODESERVER_ADDR, NODESERVER_PORT  = setup.FILE_NODE_ADDR
 
 class FileNode:
 
-    def __init__(self, masterAddr = NODESERVER_ADDR, serverPort = NODESERVER_PORT):
+    def __init__(self, masterAddr = NODESERVER_ADDR, serverPort = NODESERVER_PORT, mode = None):
 
         self.masterAddr = masterAddr
         self.port       = serverPort
         self.nodeID     = self.getNodeID()
         self.dir        = self.openDir()
-        self.server     = ThreadedServer(setup.FILE_NODE_ADDR)
+        self.server     = ThreadedServer(setup.FILE_NODE_ADDR, mode)
 
 
     def start(self):
 
         target = self.__startServer
-
         self.server.handler = self.handleConnection
         serverThread = Thread(target=target, args=[self.server])
         serverThread.start()
 
+
     def __startServer(self, server):
         server.listen()
+
 
     def getNodeID(self):
 
         dirs = os.listdir(NODE_FILEPATH)
-        # uses regex to pull integers out of directory filenames
         ids = [int(re.findall('\d+', d).pop()) for d in dirs]
         request = NodeRequest(NodeRequestType.idquery, ids).toJson()
         clientsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -52,7 +53,6 @@ class FileNode:
             clientsocket.send(request)
             print "ID REQUEST: " + request
             response = clientsocket.recv(setup.BUFSIZE)
-            print "ID RESPONSE: " + response
             response = json.loads(response)
 
             if not 'type' in response:
@@ -77,7 +77,6 @@ class FileNode:
             print "Unable to obtain filenode ID becuase exception \n" + \
             str(ex) + "\n" + " was raised. Shutting down."
             sys.exit()
-            nodeID = -1
 
         clientsocket.close()
         print "Filenode has ID: " + str(nodeID)
@@ -91,20 +90,33 @@ class FileNode:
         else:
             filename = NODE_FILEPATH + "nodedump" + str(self.nodeID) + ".data"
 
+        self.dirfile = filename
+
         if os.path.isfile(filename):
-            self.dirfile = open(filename, "rwb+")
-            self.dir = pickle.load(self.dirfile)
+
+            try:
+                file = open(self.dirfile, 'rwb+')
+                self.dir = pickle.load(file)
+                file.close()
+            except Exception as ex:
+                errorfile = NODE_FILEPATH + "nodedump" + str(self.nodeID) + "_CORRUPT.data"
+                os.system(("mv " + filename + " " + errorfile))
+                print "Error when loading preexisting file chunk."
+                print "Please repair " + errorfile + " to resolve error."
+                print "Initializing new filesystem chunk at " + filename
+                self.dir = {}
 
         else:
-            self.dirfile = open(filename, "w+")
-            self.dir     = {} # fresh local filesystem
+            self.dir     = {}
 
         self.saveState()
-        print "Current node contents: ", self.dir
+        print "Current node contents: " + str(self.dir)
 
     def saveState(self):
         print "Saving filesystem chunk state to disk..."
-        pickle.dump(self.dir, self.dirfile)
+        file = open(self.dirfile, 'w+')
+        pickle.dump(self.dir, file)
+        file.close()
         print "FS saved to disk."
 
     def start(self):
@@ -157,13 +169,22 @@ class FileNode:
 
 
 def usage_error():
-    print "Usage: python fileNode.py <PORTNUM> <MASTER_IP>"
+    print "Usage: python file_node.py -test"
     sys.exit()
 
-def main(argv):
+def main(argc, argv):
 
-    fnode = FileNode()
+    try:
+        flag = argv[1]
+    except:
+        flag = "NULL"
+
+    if flag == "-test":
+        fnode = FileNode(mode = 'test')
+    else:
+        fnode = FileNode()
+
     fnode.start()
 
 if __name__ == '__main__':
-    main(sys.argv)
+    main(len(sys.argv), sys.argv)

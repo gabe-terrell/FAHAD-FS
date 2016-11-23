@@ -2,16 +2,19 @@ import sys, socket, threading
 
 class ThreadedServer(object):
 
-    def __init__(self, (hostaddr, portnum), handler=None):
+    def __init__(self, (hostaddr, portnum), handler = None, mode = None):
 
-        #socket.gethostname() # was causing issues on localhost
         self.host = hostaddr
         self.port = portnum
         self.handler = handler
         self.timeout = 60 # seconds
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind((self.host, self.port))
+
+        if mode is 'test':
+            self.sock.bind((self.host, 0))
+        else:
+            self.sock.bind((self.host, self.port))
 
     def listen(self):
 

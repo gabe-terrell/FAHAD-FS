@@ -134,9 +134,9 @@ class MasterNode():
                         file = File(filename)
                         dir.files.append(file)
 
-                        rec = Record(filename, file, self.activeNodes)
-                        self.registry.add(rec)
-                        self.connectToNode()
+                        # rec = Record(filename, file, self.activeNodes)
+                        # self.registry.add(rec)
+                        # self.connectToNode()
                 except:
                     raise error("Server Error: buffering space to save file")
             else:
@@ -147,8 +147,8 @@ class MasterNode():
     def handleNodeRequest(self, socket, address):
 
         while True:
-
             try:
+
                 data = socket.recv(setup.BUFSIZE)
 
                 if data:
@@ -162,9 +162,8 @@ class MasterNode():
                     if type is NodeRequestType.idquery:
                         self.handleIDRequest(socket, request)
 
-                    else:
-                        raise error("Bad request of type " +  str(type) + \
-                                    " to master node.")
+                    else: raise error("Bad request of type " +  str(type) + \
+                                      " to master node.")
 
                 else:
                     print "No data received from client..."
@@ -187,11 +186,10 @@ class MasterNode():
             eligible_nodes = list(set(query_nodes) - set(self.activeNodes))
 
             if not eligible_nodes:
-                # no eligible nodes exist
-                print "no eligible nodes"
                 print str(self.activeNodes)
                 print str(self.standbyNodes)
                 nodeID = max(self.activeNodes or [0]) + max(self.standbyNodes or [0]) + 1
+                print "Adding new nodeID with value " + str(nodeID) +  " to registry."
 
             else:
                 nodeID = eligible_nodes[0]
@@ -209,10 +207,11 @@ class MasterNode():
                 MasterResponse(MasterResponseType.shutdown, '\0').toJson())
 
 
-
-    def connectToNode(self, filename):
+    # initiate a connection to filenode
+    def connectToNode(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         clientsocket.connect(setup.MASTER_NODE_ADDR)
+        pass
 
 # Should fix the silly printing issues
 class Unbuffered(object):
@@ -226,9 +225,10 @@ class Unbuffered(object):
 
 def main(argc, argv):
     sys.stdout = Unbuffered(sys.stdout)
-    mnode = MasterNode()
-    # can create new masternode every time or start from existing filesystem
-    # mnode = MasterNode(setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME)
+    if argc > 1 and os.path.isfile(setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME):
+        mnode = MasterNode(registryFile = setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME)
+    else:
+        mnode = MasterNode()
     mnode.start()
 
 
