@@ -23,11 +23,16 @@ Three main components:
 
 #### TODO:
 
+- [X] Client-side file viewer
 - [X] File node ID querying
-- [ ] File download direct from client to filenode
-- [ ] File upload direct from filenode to masternode
-- [X] File upload through master node
-- [ ] File download through master node
+- [X] File storage on file nodes
+- [X] *File upload through master node* (to-be-deprecated)
+- [ ] *File download through master node* (not to be implemented)
+- [X] Support for simultaenous clients (multithreaded master node and file nodes)
 - [X] Multiple filenodes on same host machine
     - Helpful for testing, unlikely in "production"
+- [ ] __File download direct from client to filenode__-- high priority
+- [ ] __File upload direct from filenode to client__-- high priority
 - [ ] File replication across multiple file nodes
+    - file nodes will redistribute files to fresh node upon entry to the network (directed by master)
+    - files that are under-replicated (under k = 3) due to node failure will be copied to new machines
