@@ -8,17 +8,13 @@ Three main components:
 - __File Node__: Stores files on local storage within the file node host machine. Receives and serves files from/to clients.
 - __Client__: communicates with Master Node and File Nodes
 
-![alt text](https://drive.google.com/open?id=0BwBokiOl5S3hVmVaUkRmQ0tHWGs "Architecture Overview")
-
 #### Usage:
 
 1. Start the Master Node:
     - ```$ python master_node.py```
 2. Start a File Node:
-- Single file node on one machine:
-    - ```$ python file_node.py```
-- Multiple file nodes on one machine (unpredictable server addresses):
-    - ```$ python file_node.py -test```
+    - ```$ python file_node.py``` (single node on one host machine)
+    - ```$ python file_node.py -test``` (multiple file nodes on one host machine)
 
 
 
