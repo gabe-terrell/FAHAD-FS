@@ -15,7 +15,10 @@ Three main components:
 2. Start a File Node:
     - ```$ python file_node.py``` (single node on one host machine)
     - ```$ python file_node.py -test``` (multiple file nodes on one host machine)
-
+3. Run a client:
+    - ```$ python client.py -v``` (open the filesystem viewer)
+    - ```$ python client.py -d [PATH_ON_SERVER] [LOCAL_PATH]``` (download file from filesystem to client machine)
+    - ```$ python client.py -u [PATH_ON_SERVER] [LOCAL_PATH]``` (upload file from client machine to filesystem)
 
 
 #### TODO:
