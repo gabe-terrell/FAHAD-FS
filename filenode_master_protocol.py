@@ -1,11 +1,11 @@
 import json
 
 class NodeRequestType(object):
-    idquery = 1
+    wakeup = 1
     upload = 2
 
 class MasterResponseType(object):
-    nodeid = 1
+    wakeresponse = 1
     shutdown = 2
 
 
@@ -29,11 +29,8 @@ class NodeRequest(object):
         self.data = data
 
     def toJson(self):
-        if type is None:
-            raise error("Cannot make uninitialized node request to JSON.")
-        return json.dumps({'type': self.type, 'data': self.data})
-
-
+        return json.dumps(self, default = lambda o: o.__dict__,
+                          sort_keys = True, indent = 4)
 
 class MasterResponse(object):
 
@@ -42,8 +39,8 @@ class MasterResponse(object):
         self.data = data
 
     def toJson(self):
-        return json.dumps({'type': self.type, 'data': self.data})
-
+        return json.dumps(self, default = lambda o: o.__dict__,
+                          sort_keys = True, indent = 4)
 
 
 class MasterRequest(object):
@@ -52,10 +49,8 @@ class MasterRequest(object):
         self.type = type
         self.key  = key
         self.data = data
-        self.len  = len
+        self.len  = len(data)
 
     def toJson(self):
-        return json.dumps({'type': self.type,
-                           'key':  self.key,
-                           'data': self.data,
-                           'len':  self.len})
+        return json.dumps(self, default = lambda o: o.__dict__,
+                          sort_keys = True, indent = 4)

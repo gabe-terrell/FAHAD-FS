@@ -5,7 +5,7 @@ from file_structure import Directory, File, Node
 from client_server_protocol import RequestType, ClientResponse
 from filenode_master_protocol import NodeRequestType, MasterResponseType
 from filenode_master_protocol import MasterResponse
-from master_registry import Registry, Record
+from master_registry import Registry, DataRecord
 from viewer import Viewer
 
 _, CLIENT_PORT = setup.MASTER_CLIENT_ADDR
@@ -20,9 +20,7 @@ class MasterNode():
     def __init__(self, registryFile = None):
 
         self.root = Directory('')
-        self.activeNodes = []
-        self.standbyNodes = []
-        self.registry = Registry(registryFile)
+        self.reg = Registry(registryFile)
         self.clientServer = ThreadedServer(setup.MASTER_CLIENT_ADDR)
         self.nodeServer = ThreadedServer(setup.MASTER_NODE_ADDR)
 
@@ -96,6 +94,7 @@ class MasterNode():
         pass
 
     def handleUploadRequest(self, socket, path, filesize, filename):
+
         tprint("Received Request to upload " + filename + " (" + str(filesize) + ") to" + path)
 
         def error(message):
@@ -134,9 +133,6 @@ class MasterNode():
                         file = File(filename)
                         dir.files.append(file)
 
-                        # rec = Record(filename, file, self.activeNodes)
-                        # self.registry.add(rec)
-                        # self.connectToNode()
                 except:
                     raise error("Server Error: buffering space to save file")
             else:
@@ -152,6 +148,7 @@ class MasterNode():
                 data = socket.recv(setup.BUFSIZE)
 
                 if data:
+
                     request = json.loads(data)
 
                     if not 'type' in request or not 'data' in request:
@@ -159,8 +156,8 @@ class MasterNode():
 
                     type = request['type']
 
-                    if type is NodeRequestType.idquery:
-                        self.handleIDRequest(socket, request)
+                    if type is NodeRequestType.wakeup:
+                        self.handleNodeWakeup(socket, address, request)
 
                     else: raise error("Bad request of type " +  str(type) + \
                                       " to master node.")
@@ -178,33 +175,38 @@ class MasterNode():
 
             return
 
-    def handleIDRequest(self, socket, request):
+    def handleNodeWakeup(self, socket, address, request):
 
-        print "ID Query Request: " + str(request)
         try:
-            query_nodes = request['data'] #ast.literal_eval(request['data'])
-            eligible_nodes = list(set(query_nodes) - set(self.activeNodes))
+            data = request['data']
+            query_nodes = data['ids']
+            port = data['port']
+
+            eligible_nodes = list(set(query_nodes) - set(self.reg.activenodes.keys()))
 
             if not eligible_nodes:
-                print str(self.activeNodes)
-                print str(self.standbyNodes)
-                nodeID = max(self.activeNodes or [0]) + max(self.standbyNodes or [0]) + 1
-                print "Adding new nodeID with value " + str(nodeID) +  " to registry."
+
+                nodeID = self.reg.nodeIDmax + 1
+                print "Recieved wakeup signal from preexisting file node with ID " + str(nodeID) + "."
+                print "Adding " + str(nodeID) + " to registry."
 
             else:
+
                 nodeID = eligible_nodes[0]
+                print "Recieved wakeup signal from fresh file node."
+                print "Initializing node " + str(nodeID) + " and adding to registry."
 
-            response = MasterResponse(MasterResponseType.nodeid, nodeID)
-            self.activeNodes.append(nodeID)
+
+            response = MasterResponse(MasterResponseType.wakeresponse, nodeID)
             socket.send(response.toJson())
-
+            self.reg.addNode(nodeID, (address, port))
             socket.close()
 
         except Exception, ex:
             print "An exception with name \n" + str(ex) + \
                   "\n was raised. Sending shutdown signal to filenode."
-            socket.send(
-                MasterResponse(MasterResponseType.shutdown, '\0').toJson())
+            socket.close()
+            self.shutdownNode(nodeID)
 
 
     # initiate a connection to filenode
@@ -212,6 +214,14 @@ class MasterNode():
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         clientsocket.connect(setup.MASTER_NODE_ADDR)
         pass
+
+    def shutdownNode(self, nid):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect(self.rec.activenodes[nid].address)
+        sock.send(MasterResponse(MasterResponseType.shutdown, '').toJson())
+        sock.close()
+
+
 
 # Should fix the silly printing issues
 class Unbuffered(object):
@@ -226,6 +236,7 @@ class Unbuffered(object):
 def main(argc, argv):
     sys.stdout = Unbuffered(sys.stdout)
     if argc > 1 and os.path.isfile(setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME):
+        print "Loading registry from file..."
         mnode = MasterNode(registryFile = setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME)
     else:
         mnode = MasterNode()

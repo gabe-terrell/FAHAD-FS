@@ -9,6 +9,7 @@ import pickle
 import setup
 import threading
 import json
+import errno
 from subprocess import call
 from filenode_master_protocol import *
 from threaded_server import ThreadedServer
@@ -21,11 +22,21 @@ class FileNode:
 
     def __init__(self, masterAddr = NODESERVER_ADDR, serverPort = NODESERVER_PORT, mode = None):
 
-        self.masterAddr = masterAddr
-        self.port       = serverPort
+        port = NODESERVER_PORT
+
+        for i in range(1, setup.N_COPIES):
+            try:
+                self.server = ThreadedServer((NODESERVER_ADDR, port), mode)
+                break
+            except socket.error as e:
+                if e.errno is errno.EADDRINUSE:
+                    port = port + 1
+                else:
+                    print "File node server error. Shutting down."
+                    sys.exit()
+
         self.nodeID     = self.getNodeID()
         self.dir        = self.openDir()
-        self.server     = ThreadedServer(setup.FILE_NODE_ADDR, mode)
 
 
     def start(self):
@@ -39,12 +50,12 @@ class FileNode:
     def __startServer(self, server):
         server.listen()
 
-
     def getNodeID(self):
 
         dirs = os.listdir(NODE_FILEPATH)
         ids = [int(re.findall('\d+', d).pop()) for d in dirs]
-        request = NodeRequest(NodeRequestType.idquery, ids).toJson()
+        data = {'ids': ids, 'port': self.server.port}
+        request = NodeRequest(NodeRequestType.wakeup, data).toJson()
         clientsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         try:
@@ -58,7 +69,7 @@ class FileNode:
             if not 'type' in response:
                 raise error("Master sent bad response.")
 
-            if response['type'] is MasterResponseType.nodeid:
+            if response['type'] is MasterResponseType.wakeresponse:
                 nodeID = int(response['data'])
 
             elif response['type'] is MasterResponseType.shutdown:
