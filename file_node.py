@@ -143,17 +143,20 @@ class FileNode:
                     print self.dir[request['key']]
 
                 elif type is MasterRequestType.retrieve:
-                    # response = self.dir[request['key']]
-                    # socket.send(response)
-                    pass
+                    data = self.dir[request['key']]
+                    response = MasterResponse(NodeResponseType.push, data).toJson()
+                    socket.send(response)
+                    socket.close()
 
                 elif type is MasterRequestType.delete:
                     self.dir.pop(request['key'])
-                    # TODO: send done/notfound response
+                    response = MasterResponse(NodeResponseType.done, '').toJson()
+                    socket.send(response)
+                    socket.close()
 
                 elif type is MasterRequestType.copy:
-                    pass
                     # TODO: copy from src ip to dst ip
+                    pass
 
                 elif type is MasterRequestType.shutdown:
                     sys.exit()

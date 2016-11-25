@@ -15,8 +15,8 @@ class ClientRequest(object):
 
 	def toJson(self):
 		return json.dumps({
-			'type': self.type, 
-			'command': self.command, 
+			'type': self.type,
+			'command': self.command,
 			'path': self.serverPath,
 			'size': self.filesize,
 			'name': self.name
@@ -30,7 +30,7 @@ class ClientResponse(object):
 
 	def toJson(self):
 		return json.dumps({
-			'type': self.type, 
+			'type': self.type,
 			'output': self.output,
 			'success': self.success
 		})
