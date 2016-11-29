@@ -3,8 +3,7 @@ from threading import Thread
 from threaded_server import ThreadedServer
 from file_structure import Directory, File, Node
 from client_server_protocol import ClientRequestType, ClientResponse
-from filenode_master_protocol import NodeReqType, MastResType
-from filenode_master_protocol import Response
+from filenode_master_protocol import *
 from master_registry import Registry, DataRecord
 from viewer import Viewer
 
@@ -161,7 +160,7 @@ class MasterNode():
 
                     type = request['type']
 
-                    if type is NodeReqType.wakeup:
+                    if type is ReqType.n2m_wakeup:
                         self.handleNodeWakeup(socket, address, request)
 
                     else: raise error("Bad request of type " +  str(type) + \
@@ -171,7 +170,6 @@ class MasterNode():
                     print "No data received from client..."
                     sys.stdout.flush()
                     print "Client lagging or disconnected."
-
             except Exception, ex:
                 print "An exception with name \n" + str(ex) + \
                       "\n was raised. Closing socket...\n"
@@ -202,8 +200,8 @@ class MasterNode():
                 print "Initializing node " + str(nodeID) + " and adding to registry."
 
 
-            response = Response(MastResType.wakeresponse, nodeID)
-            socket.send(response.toJson())
+            res = Response(ResType.m2n_wakeres, nodeID)
+            socket.send(res.toJson())
             self.reg.addNode(nodeID, (address, port))
             socket.close()
 
@@ -211,7 +209,7 @@ class MasterNode():
             print "An exception with name \n" + str(ex) + \
                   "\n was raised. Sending shutdown signal to filenode."
             socket.close()
-            self.shutdownNode(nodeID)
+            self.killNode(nodeID)
 
 
     # initiate a connection to filenode
@@ -220,10 +218,10 @@ class MasterNode():
         clientsocket.connect(setup.MASTER_NODE_ADDR)
         pass
 
-    def shutdownNode(self, nid):
+    def killNode(self, nid):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect(self.rec.activenodes[nid].address)
-        sock.send(Response(MastResType.shutdown, '').toJson())
+        sock.send(Response(ResType.m2n_kill).toJson())
         sock.close()
 
 
