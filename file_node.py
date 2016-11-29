@@ -55,7 +55,7 @@ class FileNode:
         dirs = os.listdir(NODE_FILEPATH)
         ids = [int(re.findall('\d+', d).pop()) for d in dirs]
         data = {'ids': ids, 'port': self.server.port}
-        request = NodeRequest(NodeRequestType.wakeup, data).toJson()
+        request = NodeRequest(NodeReqType.wakeup, data).toJson()
         clientsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         try:
@@ -69,10 +69,10 @@ class FileNode:
             if not 'type' in response:
                 raise error("Master sent bad response.")
 
-            if response['type'] is MasterResponseType.wakeresponse:
+            if response['type'] is MastResType.wakeresponse:
                 nodeID = int(response['data'])
 
-            elif response['type'] is MasterResponseType.shutdown:
+            elif response['type'] is MastResType.shutdown:
                 print "Recieved shutdown signal from masternode."
                 sys.exit()
 
@@ -80,13 +80,10 @@ class FileNode:
                 print "Recieved invalid response type from masternode."
                 sys.exit()
 
-            # TODO: echo contents of directory back to server to affirm
-            # correct contents. Could echo checksums to confirm data integrity
-
         except Exception, ex:
 
             print "Unable to obtain filenode ID becuase exception \n" + \
-            str(ex) + "\n" + " was raised. Shutting down."
+                   str(ex) + "\n" + " was raised. Shutting down."
             sys.exit()
 
         clientsocket.close()
@@ -149,27 +146,26 @@ class FileNode:
                 request = json.loads(data)
                 type = request['type']
 
-                if type is MasterRequestType.store:
+                if type is ReqType.store:
                     self.dir[request['key']] = request['data']
-                    print self.dir[request['key']]
 
-                elif type is MasterRequestType.retrieve:
+                elif type is ReqType.retrieve:
                     data = self.dir[request['key']]
-                    response = MasterResponse(NodeResponseType.push, data).toJson()
+                    response = MasterResponse(NodeResType.push, data).toJson()
                     socket.send(response)
                     socket.close()
 
-                elif type is MasterRequestType.delete:
+                elif type is ReqType.delete:
                     self.dir.pop(request['key'])
-                    response = MasterResponse(NodeResponseType.done, '').toJson()
+                    response = MasterResponse(NodeResType.done, '').toJson()
                     socket.send(response)
                     socket.close()
 
-                elif type is MasterRequestType.copy:
+                elif type is ReqType.copy:
                     # TODO: copy from src ip to dst ip
                     pass
 
-                elif type is MasterRequestType.shutdown:
+                elif type is ReqType.shutdown:
                     sys.exit()
 
             except Exception as ex:

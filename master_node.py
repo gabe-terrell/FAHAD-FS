@@ -3,7 +3,7 @@ from threading import Thread
 from threaded_server import ThreadedServer
 from file_structure import Directory, File, Node
 from client_server_protocol import RequestType, ClientResponse
-from filenode_master_protocol import NodeRequestType, MasterResponseType
+from filenode_master_protocol import NodeReqType, MastResType
 from filenode_master_protocol import MasterResponse
 from master_registry import Registry, DataRecord
 from viewer import Viewer
@@ -61,14 +61,17 @@ class MasterNode():
                 return
 
     def processClientRequest(self, socket, request, type, viewer):
+
         if type == RequestType.viewer:
             if 'command' in request:
                 command = request['command']
                 self.handleViewerRequest(socket, viewer, command)
             else:
                 raise error("Invalid Viewer Request")
+
         elif type == RequestType.download:
             pass
+
         elif type == RequestType.upload:
             try:
                 path = request['path']
@@ -76,6 +79,7 @@ class MasterNode():
                 name = request['name']
             except:
                 self.handleUploadRequest(socket, path, size, name)
+
         else:
             raise error("Invalid Type Request")
 
@@ -156,7 +160,7 @@ class MasterNode():
 
                     type = request['type']
 
-                    if type is NodeRequestType.wakeup:
+                    if type is NodeReqType.wakeup:
                         self.handleNodeWakeup(socket, address, request)
 
                     else: raise error("Bad request of type " +  str(type) + \
@@ -197,7 +201,7 @@ class MasterNode():
                 print "Initializing node " + str(nodeID) + " and adding to registry."
 
 
-            response = MasterResponse(MasterResponseType.wakeresponse, nodeID)
+            response = MasterResponse(MastResType.wakeresponse, nodeID)
             socket.send(response.toJson())
             self.reg.addNode(nodeID, (address, port))
             socket.close()
@@ -218,7 +222,7 @@ class MasterNode():
     def shutdownNode(self, nid):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect(self.rec.activenodes[nid].address)
-        sock.send(MasterResponse(MasterResponseType.shutdown, '').toJson())
+        sock.send(MasterResponse(MastResType.shutdown, '').toJson())
         sock.close()
 
 
