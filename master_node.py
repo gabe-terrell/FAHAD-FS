@@ -2,9 +2,9 @@ import sys, setup, json, os, ast
 from threading import Thread
 from threaded_server import ThreadedServer
 from file_structure import Directory, File, Node
-from client_server_protocol import RequestType, ClientResponse
+from client_server_protocol import ClientRequestType, ClientResponse
 from filenode_master_protocol import NodeReqType, MastResType
-from filenode_master_protocol import MasterResponse
+from filenode_master_protocol import Response
 from master_registry import Registry, DataRecord
 from viewer import Viewer
 
@@ -62,17 +62,17 @@ class MasterNode():
 
     def processClientRequest(self, socket, request, type, viewer):
 
-        if type == RequestType.viewer:
+        if type == ClientRequestType.viewer:
             if 'command' in request:
                 command = request['command']
                 self.handleViewerRequest(socket, viewer, command)
             else:
                 raise error("Invalid Viewer Request")
 
-        elif type == RequestType.download:
+        elif type == ClientRequestType.download:
             pass
 
-        elif type == RequestType.upload:
+        elif type == ClientRequestType.upload:
             try:
                 path = request['path']
                 size = request['size']
@@ -90,7 +90,7 @@ class MasterNode():
         else:
             argv = command.split()
             output = viewer.process(len(argv), argv)
-        response = ClientResponse(RequestType.viewer, output, output != None)
+        response = ClientResponse(ClientRequestType.viewer, output, output != None)
         socket.send(response.toJson())
 
 
@@ -102,7 +102,7 @@ class MasterNode():
         tprint("Received Request to upload " + filename + " (" + str(filesize) + ") to" + path)
 
         def error(message):
-            response = ClientResponse(RequestType.upload, message, False)
+            response = ClientResponse(ClientRequestType.upload, message, False)
             socket.send(response.toJson())
             tprint("Upload Failed: " + message)
 
@@ -114,7 +114,7 @@ class MasterNode():
                     with open(tempfile, 'w') as file:
                         # TODO: Log the data file, determine logic for getting data to node
                         tprint("Sending upload ACK to client")
-                        response = ClientResponse(RequestType.upload, "Initiating Upload...", True)
+                        response = ClientResponse(ClientRequestType.upload, "Initiating Upload...", True)
                         socket.send(response.toJson())
 
                         tprint("Reading content from client")
@@ -123,7 +123,8 @@ class MasterNode():
                         for _ in range(receptions):
                             data = socket.recv(setup.BUFSIZE)
                             if data:
-                                file.write(data)
+                                #file.write(data)
+                                pass
                             else:
                                 error("Not enough data sent")
                                 return
@@ -131,7 +132,7 @@ class MasterNode():
                         # NOTE: File has not been closed, because it's not expected to save to master
                         tprint("Upload success!")
 
-                        response = ClientResponse(RequestType.upload, "Upload Complete!", True)
+                        response = ClientResponse(ClientRequestType.upload, "Upload Complete!", True)
                         socket.send(response.toJson())
 
                         file = File(filename)
@@ -201,7 +202,7 @@ class MasterNode():
                 print "Initializing node " + str(nodeID) + " and adding to registry."
 
 
-            response = MasterResponse(MastResType.wakeresponse, nodeID)
+            response = Response(MastResType.wakeresponse, nodeID)
             socket.send(response.toJson())
             self.reg.addNode(nodeID, (address, port))
             socket.close()
@@ -222,7 +223,7 @@ class MasterNode():
     def shutdownNode(self, nid):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect(self.rec.activenodes[nid].address)
-        sock.send(MasterResponse(MastResType.shutdown, '').toJson())
+        sock.send(Response(MastResType.shutdown, '').toJson())
         sock.close()
 
 
