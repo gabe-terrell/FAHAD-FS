@@ -1,33 +1,33 @@
 import json
 
-class NodeReqType(object):
-    wakeup = 1
-
-class MastResType(object):
-    wakeresponse = 1
-    shutdown = 2
-
 class ReqType(object):
+    m2n_kill = 0
+    n2m_update = 7
+    n2m_wakeup = 8
     store = 1
-    shutdown = 2
     delete = 3
     retrieve = 4
     copy = 5
     rename = 6
 
-class NodeResType(object):
+class ResType(object):
+    m2n_kill = 0
+    m2n_wakeres = 5
     ok = 1
     push = 2
     notfound = 3
     store_error = 4
 
+
+
 class Request(object):
 
-    def __init__(self, type, data = None, length = None, path = None):
+    def __init__(self, type, data = None, length = None, path = None, chksum = None):
         self.type = type
         self.data = data
         self.len  = length
         self.path = path
+        self.chksum = chksum
 
     def toJson(self):
         return json.dumps(self, default = lambda o: o.__dict__,
@@ -35,7 +35,7 @@ class Request(object):
 
 class Response(object):
 
-    def __init__(self, type, data, len = None, path = None):
+    def __init__(self, type, data = None, len = None, path = None):
         self.type = type
         self.data = data
         self.len  = length

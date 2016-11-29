@@ -52,10 +52,12 @@ class FileNode:
 
     def getNodeID(self):
 
+        # dirs = os.walk(NODE_FILEPATH).next()[1]
+
         dirs = os.listdir(NODE_FILEPATH)
         ids = [int(re.findall('\d+', d).pop()) for d in dirs]
         data = {'ids': ids, 'port': self.server.port}
-        request = NodeRequest(NodeReqType.wakeup, data).toJson()
+        request = Request(ReqType.n2m_wakeup, data).toJson()
         clientsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         try:
@@ -72,8 +74,8 @@ class FileNode:
             if response['type'] is MastResType.wakeresponse:
                 nodeID = int(response['data'])
 
-            elif response['type'] is MastResType.shutdown:
-                print "Recieved shutdown signal from masternode."
+            elif response['type'] is ResType.m2n_kill:
+                print "Recieved shutdown signal from masternode. Shutting down."
                 sys.exit()
 
             else:
@@ -96,6 +98,7 @@ class FileNode:
             print "Opening filenode subsystem before nodeID is set."
             sys.exit()
         else:
+            dirname = NODE_FILEPATH + "node" + str(self.nodeID) + "/"
             filename = NODE_FILEPATH + "nodedump" + str(self.nodeID) + ".data"
 
         self.dirfile = filename
@@ -133,49 +136,129 @@ class FileNode:
     def handleConnection(self, socket, address):
 
         # TODO: error checking and partial reads
+        data = ''
 
         while True:
 
             try:
-                data = socket.recv(setup.BUFSIZE)
-
-                if not data: raise error("No data received from client.")
-                if not 'type' in request:
-                    raise error("Filenode sent bad request.")
-
-                request = json.loads(data)
-                type = request['type']
-
-                if type is ReqType.store:
-                    self.dir[request['key']] = request['data']
-
-                elif type is ReqType.retrieve:
-                    data = self.dir[request['key']]
-                    response = MasterResponse(NodeResType.push, data).toJson()
-                    socket.send(response)
-                    socket.close()
-
-                elif type is ReqType.delete:
-                    self.dir.pop(request['key'])
-                    response = MasterResponse(NodeResType.done, '').toJson()
-                    socket.send(response)
-                    socket.close()
-
-                elif type is ReqType.copy:
-                    # TODO: copy from src ip to dst ip
-                    pass
-
-                elif type is ReqType.shutdown:
-                    sys.exit()
-
-            except Exception as ex:
-                print "An exception with name \n" + str(ex) + \
-                      "\n was raised. Closing socket...\n"
-                socket.close()
+                data += socket.recv(setup.BUFSIZE)
+                request = loads(data)
                 break
+            except socket.error as ex:
+                print "Error reading from socket -- connection may have broken."
+                socket.close()
+                return
+            except Exception as ex:
+                print "partial read -- have not yet receved full json"
+                continue
+
+        try:
+
+            if not data: raise error("No data received from client."):
+            if not 'type' in request:
+                raise error("Bad request to filenode recieved from " + str(address))
+            type = request['type']
+
+            if  type  is ReqType.store:
+                handleFileStore(socket, address, request)
+
+            elif type is ReqType.retrieve:
+                handleFileRetrieve(socket, address, request)
+
+            elif type is ReqType.delete:
+                handleFileDelete(socket, address, request)
+
+            elif type is ReqType.copy:
+                handleFileCopy(socket, address, request)
+
+            elif type is ReqType.rename:
+                handleRename(socket, address, request
+
+            elif type is ReqType.m2n_kill:
+                handleKill(socket, address, request):
+
+            else:
+                raise error("Invalid request to file node from " + str(address))
+
+        except Exception as ex:
+            print "An exception with name \n" + str(ex) + \
+                  "\n was raised. Closing socket...\n"
+            socket.close()
+            break
+
+
 
     def initiateMasterConnect(self):
         pass
+
+    def handleFileStore(self, socket, address, request):
+
+        try:
+            # make sure request is good
+            if not ('len' in request and 'path' in request):
+                raise error("Incorrect fields present in STORE JSON.")
+            elif request['len'] is None or request['path'] is None:
+                raise error("Len and path fields initialized to None in STORE JSON")
+
+            nBytes = request['len']
+            if not isInstance(nBytes, int):
+                raise error("Len field is not an integer in STORE request from " + str(address))
+
+            res = Response(ResType.ok)
+            socket.send(res)
+
+            # setup to read new data
+
+            data = bytearray()
+
+            # read in the file
+            while len(data) < nBytes:
+                newBytes = socket.recv(setup.BUFSIZE)
+                data.extend(newBytes.encode(encoding='utf-8'))
+
+            self.dir[request['path']] = data
+            self.saveState()
+
+            # connect to server
+
+
+
+        except Exception as ex:
+            print "An exception with name \n" + str(ex) + \
+                  "\n was raised. Closing socket...\n"
+            socket.close()
+            break
+
+
+        pass
+        # recieve len data from the socket
+        # recieve more data (the file)
+        # store it
+        # send a hash of it to the server to confirm integrity
+
+    def handleFileRetrieve(self, socket, address, request):
+        # get file from storage
+        # send it in chunks that won't be too big for ram
+        pass
+
+    def handleFileDelete(self, socket, address, request):
+        # delete the file
+        # confirm with masternode
+        pass
+
+    def handleFileCopy(self, socket, address, request):
+        # copy the file to some new location (could even be self)
+        pass
+
+    def handleRename(self, socket, address, request:
+        # rename the file (change hash key in dictionary)
+        pass
+
+    def handleKill(self, socket, address, request):
+        # if the kill signal isn't from the master, don't listen
+        pass
+
+    def verify
 
 
 def usage_error():
