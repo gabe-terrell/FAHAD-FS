@@ -6,6 +6,7 @@ from client_server_protocol import ClientRequestType, ClientResponse
 from filenode_master_protocol import *
 from master_registry import Registry, DataRecord
 from viewer import Viewer
+from error_handling import DFSError
 
 _, CLIENT_PORT = setup.MASTER_CLIENT_ADDR
 _, NODE_PORT = setup.MASTER_NODE_ADDR
@@ -13,6 +14,7 @@ _, NODE_PORT = setup.MASTER_NODE_ADDR
 def tprint(obj):
     print obj
     sys.stdout.flush()
+
 
 class MasterNode():
 
@@ -50,14 +52,18 @@ class MasterNode():
                 if data:
                     request = json.loads(data)
                     if 'type' in request:
+                        print request
                         self.processClientRequest(socket, request, request['type'], viewer)
                     else:
-                        raise error("Invalid Client Request")
+                        raise DFSError("Invalid Client Request")
                 else:
-                    raise error("Client disconnected")
-            except:
+                    raise DFSError("Client disconnected")
+            except Exception as ex:
+                print "Exception raised in 'handleClientRequest': \n" + str(ex)
+                print "Disconnecting client."
                 socket.close()
                 return
+
 
     def processClientRequest(self, socket, request, type, viewer):
 
@@ -66,18 +72,19 @@ class MasterNode():
                 command = request['command']
                 self.handleViewerRequest(socket, viewer, command)
             else:
-                raise error("Invalid Viewer Request")
+                raise DFSError("Invalid Viewer Request")
 
         elif type == ClientRequestType.download:
             pass
 
         elif type == ClientRequestType.upload:
             try:
-                path = request['path']
-                size = request['size']
+                path = request['serverPath']
+                size = request['filesize']
                 name = request['name']
-            except:
                 self.handleUploadRequest(socket, path, size, name)
+            except Exception as ex:
+                raise DFSError(("Exception raised in 'processClientRequest': \n" + str(ex)))
 
         else:
             raise error("Invalid Type Request")
@@ -113,32 +120,45 @@ class MasterNode():
                     with open(tempfile, 'w') as file:
                         # TODO: Log the data file, determine logic for getting data to node
                         tprint("Sending upload ACK to client")
-                        response = ClientResponse(ClientRequestType.upload, "Initiating Upload...", True)
+                        # this is where load balancing will happen
+                        target_node = self.reg.activenodes.values()[0]
+                        response = ClientResponse(type = ClientRequestType.upload,
+                                                  output = "Initiating Upload...",
+                                                  success = True,
+                                                  address = target_node.address[0],
+                                                  port = target_node.address[1])
+                        print target_node.address
                         socket.send(response.toJson())
 
-                        tprint("Reading content from client")
-                        extraRead = 1 if filesize % setup.BUFSIZE != 0 else 0
-                        receptions = (filesize / setup.BUFSIZE) + extraRead
-                        for _ in range(receptions):
-                            data = socket.recv(setup.BUFSIZE)
-                            if data:
-                                #file.write(data)
-                                pass
-                            else:
-                                error("Not enough data sent")
-                                return
+                        # stuff should not be read from client -- reads from client are done
+                        # tprint("Reading content from client")
+                        # extraRead = 1 if filesize % setup.BUFSIZE != 0 else 0
+                        # receptions = (filesize / setup.BUFSIZE) + extraRead
+                        # for _ in range(receptions):
+                        #     data = socket.recv(setup.BUFSIZE)
+                        #     if data:
+                        #         #file.write(data)
+                        #         pass
+                        #     else:
+                        #         error("Not enough data sent")
+                        #         return
 
                         # NOTE: File has not been closed, because it's not expected to save to master
                         tprint("Upload success!")
 
-                        response = ClientResponse(ClientRequestType.upload, "Upload Complete!", True)
-                        socket.send(response.toJson())
+                        # response = ClientResponse(ClientRequestType.upload, "Upload Complete!", True)
+                        # socket.send(response.toJson())
 
+                        # add to tree
                         file = File(filename)
                         dir.files.append(file)
 
-                except:
-                    raise error("Server Error: buffering space to save file")
+                        # add to registry
+                        rec = DataRecord(path + filename, [target_node.id])
+                        self.reg.addFile(rec)
+
+                except Exception as ex:
+                    raise DFSError("Exception raised in 'handleUploadRequest': \n" + str(ex))
             else:
                 error("Directory path was not found")
         else:
@@ -183,26 +203,26 @@ class MasterNode():
         try:
             data = request['data']
             query_nodes = data['ids']
-            port = data['port']
+            node_listening_port = data['port']
 
             eligible_nodes = list(set(query_nodes) - set(self.reg.activenodes.keys()))
 
             if not eligible_nodes:
 
                 nodeID = self.reg.nodeIDmax + 1
-                print "Recieved wakeup signal from preexisting file node with ID " + str(nodeID) + "."
-                print "Adding " + str(nodeID) + " to registry."
+                print "Recieved wakeup signal from fresh file node."
+                print "Initializing node with new ID " + str(nodeID) + " and adding to registry."
 
             else:
 
                 nodeID = eligible_nodes[0]
-                print "Recieved wakeup signal from fresh file node."
-                print "Initializing node " + str(nodeID) + " and adding to registry."
+                print "Recieved wakeup signal from preexisting file node with ID " + str(nodeID) + "."
+                print "Adding " + str(nodeID) + " to registry."
 
 
             res = Response(ResType.m2n_wakeres, nodeID)
             socket.send(res.toJson())
-            self.reg.addNode(nodeID, (address, port))
+            self.reg.addNode(nodeID, (address[0], node_listening_port))
             socket.close()
 
         except Exception, ex:

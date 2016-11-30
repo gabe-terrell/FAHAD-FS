@@ -5,12 +5,13 @@ from node_record import NodeRec
 
 class DataRecord(object):
 
-    def __init__(self, filename, nodeIDList):
+    def __init__(self, filename, nodeIDList, checksum = None):
         self.filename     = filename
         self.nodeIDList   = nodeIDList
         self.timecreated  = time.time() # created now
         self.timemodified = self.timecreated
         self.timeaccessed = self.timecreated
+        self.checksum     = checksum
 
 
 class Registry(object):

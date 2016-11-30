@@ -1,0 +1,2 @@
+class DFSError(Exception):
+    pass

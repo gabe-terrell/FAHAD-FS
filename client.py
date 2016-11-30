@@ -3,7 +3,7 @@ from threading import Thread
 from setup import MASTER_CLIENT_ADDR, BUFSIZE
 from client_server_protocol import ClientRequestType, ClientRequest
 from filenode_master_protocol import ReqType as FileRequestType
-from filenode_master_protocol import NodeResType as FileResponseType
+from filenode_master_protocol import ResType as FileResponseType
 from filenode_master_protocol import Request as FileRequest
 
 BUFFER_SIZE = BUFSIZE
@@ -28,8 +28,11 @@ def connect_to_server():
 
 def message_socket(s, message):
     # print "Sending to server:\n" + message.toJson()
+
     s.send(message.toJson())
+
     response = s.recv(BUFFER_SIZE)
+
     if response:
         return json.loads(response)
     else:
@@ -81,29 +84,37 @@ def upload(local_file_path, server_dir):
             s = connect_to_server()
             res = message_socket(s, Request(server_dir, size, filename(local_file_path)))
 
-            print "Sending initial to server"
             if res and res['success']:
                 print res['output']
             else:
                 server_error()
 
-            while True:
-                request = s.recv(BUFFER_SIZE)
-                if request:
-                    request = json.loads(request)
-                    if request['success']:
-                        print request['output']
-                        return
-                    else:
-                        address = (request['address'], request['port'])
-                        target = upload_to_node
-                        args = [local_file_path, address]
-                        uploadThread = Thread(target=target, args=[self.clientServer])
-                        uploadThread.start()
-                else:
-                    server_error()
-    except:
-        print "File not found"
+            address = (res['address'], res['port'])
+            print address
+            target = upload_to_node
+            args = [local_file_path, address]
+            uploadThread = Thread(target=target, args=[local_file_path, address])
+            uploadThread.start()
+
+            # NOTE: do we need this now?
+            # while True:
+            #     request = s.recv(BUFFER_SIZE)
+            #     if request:
+            #         request = json.loads(request)
+            #         if request['success']:
+            #             print request['output']
+            #             return
+            #         else:
+            #             address = (request['address'], request['port'])
+            #             target = upload_to_node
+            #             args = [local_file_path, address]
+            #             uploadThread = Thread(target=target, args=[self.clientServer])
+            #             uploadThread.start()
+            #     else:
+            #         server_error()
+
+    except Exception as ex:
+        print "Exception raised with name: \n" + str(ex)
 
 def upload_to_node(local_file_path, node_address):
 

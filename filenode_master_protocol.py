@@ -35,7 +35,7 @@ class Request(object):
 
 class Response(object):
 
-    def __init__(self, type, data = None, len = None, path = None):
+    def __init__(self, type, data = None, length = None, path = None):
         self.type = type
         self.data = data
         self.len  = length

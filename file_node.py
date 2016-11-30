@@ -1,20 +1,23 @@
 # file node for distributed file system
 
-import os
-import re
-import sys
-import time
+import os, io, re, sys, time
 import socket
 import pickle
 import setup
 import threading
 import json
 import errno
+import hashlib
 from subprocess import call
 from filenode_master_protocol import *
 from threaded_server import ThreadedServer
+from error_handling import DFSError
+
 
 NODE_FILEPATH = "./nodefiles/"
+RAWFILE_EXT   = ".bin"
+META_EXT      = ".meta"
+DATA_ENCODING = 'utf-8'
 NODESERVER_ADDR, NODESERVER_PORT  = setup.FILE_NODE_ADDR
 
 
@@ -26,7 +29,8 @@ class FileNode:
 
         for i in range(1, setup.N_COPIES):
             try:
-                self.server = ThreadedServer((NODESERVER_ADDR, port), mode)
+                self.server = ThreadedServer((NODESERVER_ADDR, port),
+                                             handler = self.handleConnection)
                 break
             except socket.error as e:
                 if e.errno is errno.EADDRINUSE:
@@ -35,8 +39,9 @@ class FileNode:
                     print "File node server error. Shutting down."
                     sys.exit()
 
-        self.nodeID     = self.getNodeID()
-        self.dir        = self.openDir()
+        self.nodeID = None
+        self.dirpath = None
+        self.wakeup() # sets nodeid, gives server address, checks directory integrity
 
 
     def start(self):
@@ -50,11 +55,9 @@ class FileNode:
     def __startServer(self, server):
         server.listen()
 
-    def getNodeID(self):
+    def wakeup(self):
 
-        # dirs = os.walk(NODE_FILEPATH).next()[1]
-
-        dirs = os.listdir(NODE_FILEPATH)
+        dirs = os.walk(NODE_FILEPATH).next()[1] # list of directories
         ids = [int(re.findall('\d+', d).pop()) for d in dirs]
         data = {'ids': ids, 'port': self.server.port}
         request = Request(ReqType.n2m_wakeup, data).toJson()
@@ -71,7 +74,7 @@ class FileNode:
             if not 'type' in response:
                 raise error("Master sent bad response.")
 
-            if response['type'] is MastResType.wakeresponse:
+            if response['type'] is ResType.m2n_wakeres:
                 nodeID = int(response['data'])
 
             elif response['type'] is ResType.m2n_kill:
@@ -89,51 +92,18 @@ class FileNode:
             sys.exit()
 
         clientsocket.close()
+
         print "Filenode has ID: " + str(nodeID)
-        return nodeID
+        self.nodeID  = nodeID
+        self.dirpath = NODE_FILEPATH + "node" + str(self.nodeID)
 
-    def openDir(self):
-
-        if self.nodeID is None:
-            print "Opening filenode subsystem before nodeID is set."
-            sys.exit()
-        else:
-            dirname = NODE_FILEPATH + "node" + str(self.nodeID) + "/"
-            filename = NODE_FILEPATH + "nodedump" + str(self.nodeID) + ".data"
-
-        self.dirfile = filename
-
-        if os.path.isfile(filename):
-
-            try:
-                file = open(self.dirfile, 'rwb+')
-                self.dir = pickle.load(file)
-                file.close()
-            except Exception as ex:
-                errorfile = NODE_FILEPATH + "nodedump" + str(self.nodeID) + "_CORRUPT.data"
-                os.system(("mv " + filename + " " + errorfile))
-                print "Error when loading preexisting file chunk."
-                print "Please repair " + errorfile + " to resolve error."
-                print "Initializing new filesystem chunk at " + filename
-                self.dir = {}
-
-        else:
-            self.dir     = {}
-
-        self.saveState()
-        print "Current node contents: " + str(self.dir)
-
-    def saveState(self):
-        print "Saving filesystem chunk state to disk..."
-        file = open(self.dirfile, 'w+')
-        pickle.dump(self.dir, file)
-        file.close()
-        print "FS saved to disk."
+        if not os.path.isdir(self.dirpath):
+            os.mkdir(self.dirpath)
 
     def start(self):
         self.server.listen()
 
-    def handleConnection(self, socket, address):
+    def handleConnection(self, sock, address):
 
         # TODO: error checking and partial reads
         data = ''
@@ -141,12 +111,12 @@ class FileNode:
         while True:
 
             try:
-                data += socket.recv(setup.BUFSIZE)
-                request = loads(data)
+                data += sock.recv(setup.BUFSIZE)
+                request = json.loads(data)
                 break
             except socket.error as ex:
                 print "Error reading from socket -- connection may have broken."
-                socket.close()
+                sock.close()
                 return
             except Exception as ex:
                 print "partial read -- have not yet receved full json"
@@ -154,28 +124,30 @@ class FileNode:
 
         try:
 
-            if not data: raise error("No data received from client."):
+            if not data:
+                raise DFSError("No data received from client.")
             if not 'type' in request:
                 raise error("Bad request to filenode recieved from " + str(address))
+
             type = request['type']
 
             if  type  is ReqType.store:
-                handleFileStore(socket, address, request)
+                self.handleFileStore(sock, address, request)
 
             elif type is ReqType.retrieve:
-                handleFileRetrieve(socket, address, request)
+                self.handleFileRetrieve(sock, address, request)
 
             elif type is ReqType.delete:
-                handleFileDelete(socket, address, request)
+                self.handleFileDelete(sock, address, request)
 
             elif type is ReqType.copy:
-                handleFileCopy(socket, address, request)
+                self.handleFileCopy(sock, address, request)
 
             elif type is ReqType.rename:
-                handleRename(socket, address, request
+                self.handleRename(sock, address, request)
 
             elif type is ReqType.m2n_kill:
-                handleKill(socket, address, request):
+                self.handleKill(sock, address, request)
 
             else:
                 raise error("Invalid request to file node from " + str(address))
@@ -183,9 +155,8 @@ class FileNode:
         except Exception as ex:
             print "An exception with name \n" + str(ex) + \
                   "\n was raised. Closing socket...\n"
-            socket.close()
-            break
-
+            sock.close()
+            return
 
 
     def initiateMasterConnect(self):
@@ -200,41 +171,51 @@ class FileNode:
             elif request['len'] is None or request['path'] is None:
                 raise error("Len and path fields initialized to None in STORE JSON")
 
-            nBytes = request['len']
-            if not isInstance(nBytes, int):
+            nBytesExpected = request['len']
+            if not isinstance(nBytesExpected, int):
                 raise error("Len field is not an integer in STORE request from " + str(address))
 
+            path   = request['path']
+            m = hashlib.md5()
+            m.update(path)
+            pathHashStr = str(m.hexdigest())
+            chunkFilename = self.dirpath + '/' + pathHashStr + RAWFILE_EXT
+            metaFilename  = self.dirpath + '/' + pathHashStr + META_EXT
+
             res = Response(ResType.ok)
-            socket.send(res)
-
-            # setup to read new data
-
-            data = bytearray()
+            socket.send(res.toJson())
 
             # read in the file
-            while len(data) < nBytes:
-                newBytes = socket.recv(setup.BUFSIZE)
-                data.extend(newBytes.encode(encoding='utf-8'))
+            nRecvd = 0
+            h = hashlib.md5()
 
-            self.dir[request['path']] = data
-            self.saveState()
+            # TODO: check that it creates a new file
+            with io.open(chunkFilename, 'wb') as cFile:
+
+                while nRecvd < nBytesExpected:
+                    print "hello"
+                    newBytes = socket.recv(setup.BUFSIZE)
+                    nRecvd = nRecvd + len(newBytes)
+                    encodedBytes = newBytes.encode(DATA_ENCODING)
+                    n = cFile.write(encodedBytes)
+                    h.update(encodedBytes)
+
+            with io.open(metaFilename, 'wb') as mFile:
+                metadata = {'checksum': h.hexdigest()}
+                mFile.write(str(metadata))
+
+            print "Done writing file " + str(path) + " to disk..."
 
             # connect to server
-
+            # send a hash of the new file to the server to confirm integrity
 
 
         except Exception as ex:
             print "An exception with name \n" + str(ex) + \
                   "\n was raised. Closing socket...\n"
             socket.close()
-            break
 
 
-        pass
-        # recieve len data from the socket
-        # recieve more data (the file)
-        # store it
-        # send a hash of it to the server to confirm integrity
 
     def handleFileRetrieve(self, socket, address, request):
         # get file from storage
@@ -250,15 +231,13 @@ class FileNode:
         # copy the file to some new location (could even be self)
         pass
 
-    def handleRename(self, socket, address, request:
+    def handleRename(self, socket, address, request):
         # rename the file (change hash key in dictionary)
         pass
 
     def handleKill(self, socket, address, request):
         # if the kill signal isn't from the master, don't listen
         pass
-
-    def verify
 
 
 def usage_error():
