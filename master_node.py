@@ -120,7 +120,8 @@ class MasterNode():
                     with open(tempfile, 'w') as file:
                         # TODO: Log the data file, determine logic for getting data to node
                         tprint("Sending upload ACK to client")
-                        # this is where load balancing will happen
+                        # TODO: implement node balancing to choose nodes to give to client
+                        # TODO: change from single target node to list of addresses
                         target_node = self.reg.activenodes.values()[0]
                         response = ClientResponse(type = ClientRequestType.upload,
                                                   output = "Initiating Upload...",
@@ -130,7 +131,10 @@ class MasterNode():
                         print target_node.address
                         socket.send(response.toJson())
 
-                        # stuff should not be read from client -- reads from client are done
+                        # NOTE: don't think we read again from client?
+                        # TODO: is there a way to produce a callback to this thread so that
+                        #       once the file nodes verify the upload with the master, we can send a success
+                        #       message via the TCP connection we still have open with the client?
                         # tprint("Reading content from client")
                         # extraRead = 1 if filesize % setup.BUFSIZE != 0 else 0
                         # receptions = (filesize / setup.BUFSIZE) + extraRead

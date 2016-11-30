@@ -27,7 +27,7 @@ def connect_to_server():
     return connect_to_node(MASTER_CLIENT_ADDR)
 
 def message_socket(s, message):
-    # print "Sending to server:\n" + message.toJson()
+    # print "Sending to server:\n" + str(message.toJson())
 
     s.send(message.toJson())
 
@@ -89,6 +89,7 @@ def upload(local_file_path, server_dir):
             else:
                 server_error()
 
+            # TODO: change to recieve a list of addresses, spawn an upload thread for each address
             address = (res['address'], res['port'])
             print address
             target = upload_to_node
@@ -96,7 +97,8 @@ def upload(local_file_path, server_dir):
             uploadThread = Thread(target=target, args=[local_file_path, address])
             uploadThread.start()
 
-            # NOTE: do we need this now?
+            # TODO: once the server is sending "success" messages for successful checksum comparison,
+            #       read from the server to check upload sucess
             # while True:
             #     request = s.recv(BUFFER_SIZE)
             #     if request:
