@@ -105,27 +105,17 @@ class FileNode:
 
     def handleConnection(self, sock, address):
 
-        # TODO: error checking and partial reads
-        data = ''
+        # get data
+        try:
+            request = self.readJSONFromSock(sock)
+        except:
+            print "Error getting data from " + str(sock.getpeername()) + " in 'handleConnection'"
+            print "Closing socket."
+            sock.close()
 
-        while True:
-
-            try:
-                data += sock.recv(setup.BUFSIZE)
-                request = json.loads(data)
-                break
-            except socket.error as ex:
-                print "Error reading from socket -- connection may have broken."
-                sock.close()
-                return
-            except Exception as ex:
-                print "partial read -- have not yet receved full json"
-                continue
-
+        # handle request
         try:
 
-            if not data:
-                raise DFSError("No data received from client.")
             if not 'type' in request:
                 raise error("Bad request to filenode recieved from " + str(address))
 
@@ -193,7 +183,6 @@ class FileNode:
             with io.open(chunkFilename, 'wb') as cFile:
 
                 while nRecvd < nBytesExpected:
-                    print "hello"
                     newBytes = socket.recv(setup.BUFSIZE)
                     nRecvd = nRecvd + len(newBytes)
                     encodedBytes = newBytes.encode(DATA_ENCODING)
@@ -206,14 +195,44 @@ class FileNode:
 
             print "Done writing file " + str(path) + " to disk..."
 
-            # connect to server
             # send a hash of the new file to the server to confirm integrity
+            request = Request(type = ReqType.n2m_verify)
+            mastersock = self.reqToMaster(request)
+            res = self.readJSONFromSock(mastersock)
+
+            mastersock.close()
 
 
         except Exception as ex:
             print "An exception with name \n" + str(ex) + \
                   "\n was raised. Closing socket...\n"
             socket.close()
+
+    def reqToMaster(self, request):
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect(setup.MASTER_NODE_ADDR)
+            sock.send(request)
+            sock.close()
+        except socket.error as e:
+            raise DFSError("Socket error with value " + str(e) + " in function 'reqToMaster'.")
+
+    def readJSONFromSock(self, sock):
+        data = ''
+        while True:
+            try:
+                data += sock.recv(setup.BUFSIZE)
+                request = json.loads(data)
+                break
+            except socket.error as ex:
+                print "Error reading from socket -- connection may have broken."
+                sock.close()
+                return
+            except Exception as ex:
+                print "Partial read from " + str(sock.getpeername()) + " -- have not yet receved full JSON."
+                continue
+
+        if not data: raise DFSError("No data recieved from client in getResponse")
 
 
 

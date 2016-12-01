@@ -117,56 +117,36 @@ class MasterNode():
             if dir:
                 tempfile = "./" + filename # TODO: This should be changed to the hash of the filename
                 try:
-                    with open(tempfile, 'w') as file:
-                        # TODO: Log the data file, determine logic for getting data to node
-                        tprint("Sending upload ACK to client")
-                        # TODO: implement node balancing to choose nodes to give to client
-                        # TODO: change from single target node to list of addresses
-                        # target_node = self.reg.activenodes.values()[0]
 
-                        # TODO: Change nodes to be the ones we choose, not all of them
-                        nodes = self.reg.activenodes.values()
-                        addrs = [node.address[0] for node in nodes]
-                        ports = [node.address[1] for node in nodes]
-                        response = ClientResponse(type = ClientRequestType.upload,
-                                                  output = "Initiating Upload...",
-                                                  success = True,
-                                                  address = addrs,
-                                                  port = ports)
-                        print "Sending file to following nodes:"
-                        for node in nodes:
-                            print node.address
-                        socket.send(response.toJson())
+                    # TODO: implement node balancing to choose nodes to give to client
+                    # TODO: Change nodes to be the ones we choose, not all of them
+                    nodes = self.reg.activenodes.values()
+                    addrs = [node.address[0] for node in nodes]
+                    ports = [node.address[1] for node in nodes]
+                    response = ClientResponse(type = ClientRequestType.upload,
+                                              output = "Initiating Upload...",
+                                              success = True,
+                                              address = addrs,
+                                              port = ports)
 
-                        # NOTE: don't think we read again from client?
-                        # TODO: is there a way to produce a callback to this thread so that
-                        #       once the file nodes verify the upload with the master, we can send a success
-                        #       message via the TCP connection we still have open with the client?
-                        # tprint("Reading content from client")
-                        # extraRead = 1 if filesize % setup.BUFSIZE != 0 else 0
-                        # receptions = (filesize / setup.BUFSIZE) + extraRead
-                        # for _ in range(receptions):
-                        #     data = socket.recv(setup.BUFSIZE)
-                        #     if data:
-                        #         #file.write(data)
-                        #         pass
-                        #     else:
-                        #         error("Not enough data sent")
-                        #         return
+                    ids = []
+                    tprint("Sending upload info to client for the following nodes:")
+                    for node in nodes:
+                        print node.address
+                        ids.append(node.id)
+                    socket.send(response.toJson())
+                    tprint("Upload info sent to client.")
+                    # TODO: is there a way to produce a callback to this thread so that
+                    #       once the file nodes verify the upload with the master, we can send a success
+                    #       message via the TCP connection we still have open with the client?
 
-                        # NOTE: File has not been closed, because it's not expected to save to master
-                        tprint("Upload success!")
+                    # add to tree
+                    file = File(filename)
+                    dir.files.append(file, [ids])
 
-                        # response = ClientResponse(ClientRequestType.upload, "Upload Complete!", True)
-                        # socket.send(response.toJson())
-
-                        # add to tree
-                        file = File(filename)
-                        dir.files.append(file)
-
-                        # add to registry
-                        rec = DataRecord(path + filename, [target_node.id])
-                        self.reg.addFile(rec)
+                    # add to registry
+                    rec = DataRecord(path + filename, [ids], sock = socket)
+                    self.reg.addFile(rec)
 
                 except Exception as ex:
                     raise DFSError("Exception raised in 'handleUploadRequest': \n" + str(ex))

@@ -98,25 +98,35 @@ def upload(local_file_path, server_dir):
                 address = (res['address'][i], res['port'][i])
                 args = [local_file_path, server_path, address]
                 uploadThread = Thread(target=target, args=args)
-                uploadThread.start()  
+                uploadThread.start()
 
             # TODO: once the server is sending "success" messages for successful checksum comparison,
             #       read from the server to check upload sucess
-            # while True:
-            #     request = s.recv(BUFFER_SIZE)
-            #     if request:
-            #         request = json.loads(request)
-            #         if request['success']:
-            #             print request['output']
-            #             return
-            #         else:
-            #             address = (request['address'], request['port'])
-            #             target = upload_to_node
-            #             args = [local_file_path, address]
-            #             uploadThread = Thread(target=target, args=[self.clientServer])
-            #             uploadThread.start()
-            #     else:
-            #         server_error()
+
+            data = ''
+            while True
+                try:
+                    data += s.recv(setup.BUFSIZE)
+                    request = json.loads(data)
+                    break
+                except socket.error as ex:
+                    print "Error reading from socket -- connection may have broken."
+                    s.close()
+                    return
+                except Exception as ex:
+                    print "partial read -- have not yet receved full json"
+                    continue
+
+            try:
+                if 'success' in request:
+                    print "Recieved verification response from Master Node with value: "
+                    print request['output']
+                    return
+                else:
+                    pass
+            except Exception as ex:
+                print "Problem reading from response JSON."
+                print "Aborting with unverified upload..."
 
     except Exception as ex:
         print "Exception raised with name: \n" + str(ex)

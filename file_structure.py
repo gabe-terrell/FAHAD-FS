@@ -66,6 +66,9 @@ class Directory:
 class File:
 	def __init__(self, name, nodes = []):
 		self.name = name
+        # NOTE: using list of node ids. can then use the nodeid as a key for
+        #       MasterNode.activenodes or MasterNode.standbynodes
+        #       which will return the richer NodeRec object ('node_record.py')
 		self.nodes = nodes
 
 class Node:

@@ -2,16 +2,21 @@ import setup
 import pickle
 import time
 from node_record import NodeRec
+import hashlib
 
 class DataRecord(object):
 
-    def __init__(self, filename, nodeIDList, checksum = None):
-        self.filename     = filename
+    def __init__(self, filepath, nodeIDList, sock = None):
+        self.filepath     = filepath
         self.nodeIDList   = nodeIDList
-        self.timecreated  = time.time() # created now
+        self.timecreated  = time.time()
         self.timemodified = self.timecreated
         self.timeaccessed = self.timecreated
-        self.checksum     = checksum
+        self.verified     = False
+        self.tempsock     = sock
+        cs = hashlib.md5()
+        cs.update(path)
+        self.checksum = str(cs.hexdigest())
 
 
 class Registry(object):
@@ -67,9 +72,12 @@ class Registry(object):
 
     def addFile(self, rec):
         self.data[rec.filename] = rec
+        self.saveState()
+
 
     def addNode(self, nodeID, (ip, port)):
         nr = NodeRec(nodeID, (ip, port))
         self.activenodes[nodeID] = nr
         self.standbynodes[nodeID] = nr
         self.nodeIDmax = max(self.nodeIDmax, nodeID)
+        self.saveState()
