@@ -78,6 +78,9 @@ def upload(local_file_path, server_dir):
         head, tail = ntpath.split(path)
         return tail or ntpath.basename(head)
 
+    def serverpath(file, path):
+        return path + '/' + file if path[-1] != '/' else path + file
+
     try:
         with open(local_file_path, 'r') as file:
             size = os.path.getsize(local_file_path)
@@ -89,13 +92,13 @@ def upload(local_file_path, server_dir):
             else:
                 server_error()
 
-            # TODO: change to recieve a list of addresses, spawn an upload thread for each address
-            address = (res['address'], res['port'])
-            print address
             target = upload_to_node
-            args = [local_file_path, address]
-            uploadThread = Thread(target=target, args=[local_file_path, address])
-            uploadThread.start()
+            server_path = serverpath(filename(local_file_path), server_dir)
+            for i in range(len(res['address'])):
+                address = (res['address'][i], res['port'][i])
+                args = [local_file_path, server_path, address]
+                uploadThread = Thread(target=target, args=args)
+                uploadThread.start()  
 
             # TODO: once the server is sending "success" messages for successful checksum comparison,
             #       read from the server to check upload sucess
@@ -118,7 +121,7 @@ def upload(local_file_path, server_dir):
     except Exception as ex:
         print "Exception raised with name: \n" + str(ex)
 
-def upload_to_node(local_file_path, node_address):
+def upload_to_node(local_file_path, server_file_path, node_address):
 
     def Request(path, size):
         return FileRequest(FileRequestType.store, path=path, length=size)
@@ -126,7 +129,7 @@ def upload_to_node(local_file_path, node_address):
     with open(local_file_path, 'r') as file:
         size = os.path.getsize(local_file_path)
         s = connect_to_node(node_address)
-        res = message_socket(s, Request(local_file_path, size))
+        res = message_socket(s, Request(server_file_path, size))
 
         print "Sending store request to node"
         if res and 'type' in res and res['type'] is FileResponseType.ok:

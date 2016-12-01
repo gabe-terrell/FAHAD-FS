@@ -1,3 +1,6 @@
 *.pyc
 *.dir
 *.data
+**/setup.py
+**/nodefiles/*
+**/registrydata/*

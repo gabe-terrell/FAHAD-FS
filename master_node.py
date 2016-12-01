@@ -105,7 +105,7 @@ class MasterNode():
 
     def handleUploadRequest(self, socket, path, filesize, filename):
 
-        tprint("Received Request to upload " + filename + " (" + str(filesize) + ") to" + path)
+        tprint("Received Request to upload " + filename + " (" + str(filesize) + ") to " + path)
 
         def error(message):
             response = ClientResponse(ClientRequestType.upload, message, False)
@@ -122,13 +122,20 @@ class MasterNode():
                         tprint("Sending upload ACK to client")
                         # TODO: implement node balancing to choose nodes to give to client
                         # TODO: change from single target node to list of addresses
-                        target_node = self.reg.activenodes.values()[0]
+                        # target_node = self.reg.activenodes.values()[0]
+
+                        # TODO: Change nodes to be the ones we choose, not all of them
+                        nodes = self.reg.activenodes.values()
+                        addrs = [node.address[0] for node in nodes]
+                        ports = [node.address[1] for node in nodes]
                         response = ClientResponse(type = ClientRequestType.upload,
                                                   output = "Initiating Upload...",
                                                   success = True,
-                                                  address = target_node.address[0],
-                                                  port = target_node.address[1])
-                        print target_node.address
+                                                  address = addrs,
+                                                  port = ports)
+                        print "Sending file to following nodes:"
+                        for node in nodes:
+                            print node.address
                         socket.send(response.toJson())
 
                         # NOTE: don't think we read again from client?
