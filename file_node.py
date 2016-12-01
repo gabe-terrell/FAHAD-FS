@@ -162,7 +162,7 @@ class FileNode:
     def initiateMasterConnect(self):
         pass
 
-    def handleFileStore(self, socket, address, request):
+    def handleFileStore(self, clientSocket, address, request):
 
         try:
             # make sure request is good
@@ -183,7 +183,7 @@ class FileNode:
             metaFilename  = self.dirpath + '/' + pathHashStr + META_EXT
 
             res = Response(ResType.ok)
-            socket.send(res.toJson())
+            clientSocket.send(res.toJson())
 
             # read in the file
             nRecvd = 0
@@ -193,9 +193,9 @@ class FileNode:
             with io.open(chunkFilename, 'wb') as cFile:
 
                 while nRecvd < nBytesExpected:
-                    print "hello"
-                    newBytes = socket.recv(setup.BUFSIZE)
+                    newBytes = clientSocket.recv(setup.BUFSIZE)
                     nRecvd = nRecvd + len(newBytes)
+                    print "Received " + str(nRecvd) + " of " + str(nBytesExpected) + " bytes"
                     encodedBytes = newBytes.encode(DATA_ENCODING)
                     n = cFile.write(encodedBytes)
                     h.update(encodedBytes)
@@ -208,12 +208,19 @@ class FileNode:
 
             # connect to server
             # send a hash of the new file to the server to confirm integrity
+            checksum = 'checksum' # TODO: Change this to be a real checksum (MUST CHANGE ON CLIENT TOO)
+            request = Request(ReqType.n2m_update, data=self.nodeID, path=path, chksum=checksum).toJson()
+            serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            serverSocket.connect(setup.MASTER_NODE_ADDR)
+            serverSocket.send(request)
+            serverSocket.close()
 
+            clientSocket.close()
 
         except Exception as ex:
             print "An exception with name \n" + str(ex) + \
                   "\n was raised. Closing socket...\n"
-            socket.close()
+            clientSocket.close()
 
 
 

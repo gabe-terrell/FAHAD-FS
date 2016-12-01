@@ -15,8 +15,26 @@ def tprint(obj):
     print obj
     sys.stdout.flush()
 
+class UploadSession(object):
 
-class MasterNode():
+    def __init__(self, path, checksum, nodeIds, clientsocket):
+        self.path = path
+        self.checksum = checksum
+        self.nodeIds = set(nodeIds)
+        self.clientsocket = clientsocket
+
+    def verify(self, checksum, nodeId):
+        if nodeId in self.nodeIds:
+            if self.checksum == checksum:
+                self.nodeIds.remove(nodeId)
+            else:
+                return False
+        return True
+
+    def finished(self):
+        return len(self.nodeIds) == 0
+
+class MasterNode(object):
 
     def __init__(self, registryFile = None):
 
@@ -24,6 +42,7 @@ class MasterNode():
         self.reg = Registry(registryFile)
         self.clientServer = ThreadedServer(setup.MASTER_CLIENT_ADDR)
         self.nodeServer = ThreadedServer(setup.MASTER_NODE_ADDR)
+        self.uploadSessions = {}
 
 
     def start(self):
@@ -82,7 +101,8 @@ class MasterNode():
                 path = request['serverPath']
                 size = request['filesize']
                 name = request['name']
-                self.handleUploadRequest(socket, path, size, name)
+                checksum = request['checksum']
+                self.handleUploadRequest(socket, path, size, name, checksum)
             except Exception as ex:
                 raise DFSError(("Exception raised in 'processClientRequest': \n" + str(ex)))
 
@@ -103,7 +123,7 @@ class MasterNode():
     def handleDownloadRequest(self, socket, path):
         pass
 
-    def handleUploadRequest(self, socket, path, filesize, filename):
+    def handleUploadRequest(self, socket, path, filesize, filename, checksum):
 
         tprint("Received Request to upload " + filename + " (" + str(filesize) + ") to " + path)
 
@@ -125,6 +145,7 @@ class MasterNode():
                         # target_node = self.reg.activenodes.values()[0]
 
                         # TODO: Change nodes to be the ones we choose, not all of them
+                        # TODO: Register session by node ids (node.id)
                         nodes = self.reg.activenodes.values()
                         addrs = [node.address[0] for node in nodes]
                         ports = [node.address[1] for node in nodes]
@@ -142,17 +163,10 @@ class MasterNode():
                         # TODO: is there a way to produce a callback to this thread so that
                         #       once the file nodes verify the upload with the master, we can send a success
                         #       message via the TCP connection we still have open with the client?
-                        # tprint("Reading content from client")
-                        # extraRead = 1 if filesize % setup.BUFSIZE != 0 else 0
-                        # receptions = (filesize / setup.BUFSIZE) + extraRead
-                        # for _ in range(receptions):
-                        #     data = socket.recv(setup.BUFSIZE)
-                        #     if data:
-                        #         #file.write(data)
-                        #         pass
-                        #     else:
-                        #         error("Not enough data sent")
-                        #         return
+                        serverFile = path + '/' + filename if path[-1] != '/' else path + filename
+                        ids = [node.id for node in nodes]
+                        session = UploadSession(serverFile, checksum, ids, socket)
+                        self.uploadSessions[serverFile] = session
 
                         # NOTE: File has not been closed, because it's not expected to save to master
                         tprint("Upload success!")
@@ -165,7 +179,7 @@ class MasterNode():
                         dir.files.append(file)
 
                         # add to registry
-                        rec = DataRecord(path + filename, [target_node.id])
+                        rec = DataRecord(path + filename, ids)
                         self.reg.addFile(rec)
 
                 except Exception as ex:
@@ -193,6 +207,8 @@ class MasterNode():
 
                     if type is ReqType.n2m_wakeup:
                         self.handleNodeWakeup(socket, address, request)
+                    elif type is ReqType.n2m_update:
+                        self.handleNodeUpdate(socket, request)
 
                     else: raise error("Bad request of type " +  str(type) + \
                                       " to master node.")
@@ -241,6 +257,39 @@ class MasterNode():
                   "\n was raised. Sending shutdown signal to filenode."
             socket.close()
             self.killNode(nodeID)
+
+    def handleNodeUpdate(self, socket, request):
+        print "Received a node update message"
+        try:
+            nodeId = request['data']
+            path = request['path']
+            checksum = request['chksum']
+
+            session = self.uploadSessions[path]
+            if session.verify(checksum, nodeId):
+                print "Node " + str(nodeId) + " has received " + path + " successfully"
+                if session.finished():
+                    response = ClientResponse(type = ClientRequestType.upload,
+                                              output = "Upload Success",
+                                              success = True)
+                    session.clientsocket.send(response.toJson())
+                    session.clientsocket.close()
+                    print "All filenodes have received " + path + " -- Disconnecting from client"
+            else:
+                print "Node " + str(nodeId) + " failed the checksum for " + path + " -- Requesting resend"
+                node = self.reg.activenodes[nodeId]
+                response = ClientResponse(type = ClientRequestType.upload,
+                                          output = "Retrying Upload...",
+                                          success = False,
+                                          address = node.address[0],
+                                          port = node.address[1])
+                session.clientsocket.send(response.toJson())            
+
+        except Exception, ex:
+            print "An exception with name \n" + str(ex) + \
+                  "\n was raised. Sending shutdown signal to filenode."
+            socket.close()
+            self.killNode(nodeId)
 
 
     # initiate a connection to filenode

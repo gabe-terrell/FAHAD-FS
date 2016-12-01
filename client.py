@@ -71,8 +71,9 @@ def download(sever_file_path, local_dir):
 
 def upload(local_file_path, server_dir):
 
-    def Request(path, size, name):
-        return ClientRequest(ClientRequestType.upload, serverPath=path, filesize=size, name=name)
+    def Request(path, size, name, checksum):
+        return ClientRequest(ClientRequestType.upload, serverPath=path, 
+            filesize=size, name=name, checksum=checksum)
 
     def filename(path):
         head, tail = ntpath.split(path)
@@ -85,7 +86,8 @@ def upload(local_file_path, server_dir):
         with open(local_file_path, 'r') as file:
             size = os.path.getsize(local_file_path)
             s = connect_to_server()
-            res = message_socket(s, Request(server_dir, size, filename(local_file_path)))
+            checksum = 'checksum' # TODO: Change this to be a real checksum
+            res = message_socket(s, Request(server_dir, size, filename(local_file_path), checksum))
 
             if res and res['success']:
                 print res['output']
@@ -99,6 +101,20 @@ def upload(local_file_path, server_dir):
                 args = [local_file_path, server_path, address]
                 uploadThread = Thread(target=target, args=args)
                 uploadThread.start()  
+
+            # Wait for upload status from server
+            while True:
+                response = s.recv(BUFFER_SIZE)
+                if response:
+                    response = json.loads(response)
+                    print response['output']
+                    if response['success']:
+                        return
+                    else:
+                        address = (response['address'], response['port'])
+                        args = [local_file_path, server_path, address]
+                        uploadThread = Thread(target=target, args=args)
+                        uploadThread.start()
 
             # TODO: once the server is sending "success" messages for successful checksum comparison,
             #       read from the server to check upload sucess
@@ -145,6 +161,8 @@ def upload_to_node(local_file_path, server_file_path, node_address):
                 s.send(data)
             else:
                 break
+
+        s.close()
 
 def main(argc, argv):
 
