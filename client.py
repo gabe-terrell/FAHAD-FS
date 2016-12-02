@@ -1,4 +1,4 @@
-import sys, os, ntpath, socket, json, hashlib
+import sys, os, ntpath, socket, json, hashlib, time
 from threading import Thread
 from setup import MASTER_CLIENT_ADDR, BUFSIZE
 from client_server_protocol import ClientRequestType, ClientRequest
@@ -83,7 +83,7 @@ def upload(local_file_path, server_dir):
         return path + '/' + file if path[-1] != '/' else path + file
 
     try:
-        with open(local_file_path, 'r') as file:
+        with open(local_file_path, 'rb') as file:
             size = os.path.getsize(local_file_path)
             s = connect_to_server()
 
@@ -147,7 +147,8 @@ def readJSONFromSock(sock, addr):
             time.sleep(0.01)
             continue
 
-    if not data: raise DFSError("No data recieved in readJSONFromSock")
+    if not data: 
+        raise DFSError("No data recieved in readJSONFromSock")
 
     return obj
 
@@ -157,7 +158,7 @@ def upload_to_node(local_file_path, server_file_path, node_address):
     def Request(path, size):
         return FileRequest(FileRequestType.store, path=path, length=size)
 
-    with open(local_file_path, 'r') as file:
+    with open(local_file_path, 'rb') as file:
         size = os.path.getsize(local_file_path)
         s = connect_to_node(node_address)
         res = message_socket(s, Request(server_file_path, size))
