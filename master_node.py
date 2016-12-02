@@ -1,7 +1,7 @@
 import sys, setup, json, os, ast
 from threading import Thread
 from threaded_server import ThreadedServer
-from file_structure import Directory, File
+from file_structure import Directory
 from client_server_protocol import ClientRequestType, ClientResponse
 from filenode_protocol import *
 from master_registry import Registry, DataRecord
@@ -44,6 +44,12 @@ class MasterNode(object):
         self.nodeServer = ThreadedServer(setup.MASTER_NODE_ADDR)
         self.uploadSessions = {}
 
+        self.validateRegistry()
+
+    def validateRegistry(self):
+        for path in self.reg.data:
+            path = path.split('/')
+            self.root.createPath(path[1:])
 
     def start(self):
 
@@ -161,8 +167,7 @@ class MasterNode(object):
                     self.uploadSessions[serverFile] = session
 
                     # add to tree
-                    file = File(filename, ids)
-                    dir.files.append(file)
+                    dir.files.add(filename)
 
                     # add to registry
                     rec = DataRecord(serverFile, ids)
@@ -172,6 +177,10 @@ class MasterNode(object):
                 except Exception as ex:
                     raise DFSError("Exception raised in 'handleUploadRequest': \n" + str(ex))
             else:
+                response = ClientResponse(type = ClientRequestType.upload,
+                                          output = "Invalid directory path",
+                                          success = False)
+                socket.send(response.toJson())
                 error("Directory path was not found")
         else:
             error("Directory must start with '/'")
@@ -278,14 +287,15 @@ class MasterNode(object):
             print "An exception in 'handleNodeUpdate' with name \n" + str(ex) + \
                   "\n was raised. Sending shutdown signal to filenode."
             socket.close()
-            self.killNode(nodeId)
+            #self.killNode(nodeId)
 
 
     # initiate a connection to filenode by id
-    def connectToNode(self, id):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        clientsocket.connect(self.standbynodes[id].address)
-        return socket
+    # TODO: sock, clientsocket, and socket... lmao, this doesn't look right
+    # def connectToNode(self, id):
+    #     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    #     clientsocket.connect(self.standbynodes[id].address)
+    #     return socket
 
     def killNode(self, nid):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

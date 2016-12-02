@@ -1,13 +1,16 @@
+DELIMITER = '#'
+
 class Directory:
 	def __init__(self, name, parent = None):
 		self.name = name
 		self.parent = parent
 		self.children = []
-		self.files = []
+		self.files = set()
 
 	def mkdir(self, name):
 		new_directory = Directory(name, self)
 		self.children.append(new_directory)
+		return new_directory
 
 	def ls(self):
 		output = ""
@@ -19,7 +22,7 @@ class Directory:
 		if self.files:
 			output += "Files: \n"
 			for file in self.files:
-				output += "     " + file.name + '\n'
+				output += "     " + file + '\n'
 
 		if not output:
 			return "Directory empty"
@@ -57,16 +60,36 @@ class Directory:
 		else:
 			return None
 
+	# Given a path identical to cd, ensure it is created from the top down
+	def createPath(self, path):
+		path_len = len(path)
+		if path_len == 0:
+			return self
+		if path_len == 1:
+			file = path[0]
+			if file != DELIMITER:
+				self.files.add(file)
+			return self
+
+		nextDir = path[0]
+		path = path[1:]
+
+		if nextDir == '.':
+			return self.createPath(path)
+		if nextDir == '..':
+			if self.parent:
+				return self.parent.createPath(path)
+			else:
+				return None
+
+		child = self.get_child(nextDir)
+		if child:
+			return child.createPath(path)
+		else:
+			return self.mkdir(nextDir).createPath(path)
+
 	def get_child(self, name):
 		for child in self.children:
 			if child.name == name:
 				return child
 		return None
-
-class File:
-	def __init__(self, name, nodes = []):
-		self.name = name
-        # NOTE: using list of node ids. can then use the nodeid as a key for
-        #       MasterNode.activenodes or MasterNode.standbynodes
-        #       which will return the richer NodeRec object ('node_record.py')
-		self.nodes = nodes

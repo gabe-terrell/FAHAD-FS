@@ -99,10 +99,9 @@ def upload(local_file_path, server_dir):
 
             res = message_socket(s, Request(server_dir, size, filename(local_file_path), checksum))
 
-            if res and res['success']:
-                print res['output']
-            else:
-                server_error()
+            print res['output']
+            if not res['success']:
+                return
 
             target = upload_to_node
             server_path = serverpath(filename(local_file_path), server_dir)
@@ -124,9 +123,6 @@ def upload(local_file_path, server_dir):
                         args = [local_file_path, server_path, address]
                         uploadThread = Thread(target=target, args=args)
                         uploadThread.start()
-
-            # TODO: once the server is sending "success" messages for successful checksum comparison,
-            #       read from the server to check upload sucess
 
     except Exception as ex:
         print "Exception raised with name: \n" + str(ex)

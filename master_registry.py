@@ -1,4 +1,4 @@
-import setup
+import setup, sys
 import pickle
 import time
 from node_record import NodeRec
@@ -34,7 +34,7 @@ class Registry(object):
 
         if archivePath is not None:
             self.archivePath = archivePath
-            self.loadArchive(archivePath)
+            self.loadArchive()
         else:
             self.archivePath = setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME
             self.createArchive()
@@ -47,13 +47,14 @@ class Registry(object):
             arch = pickle.load(file)
             self.data = arch['data']
             self.standbynodes = arch['nodes']
-            ids = [n.id for n in self.standbynodes]
-            self.nodeIDmax = max(ids)
+            ids = [n for n in self.standbynodes]
+            self.nodeIDmax = max(ids) if ids else 0
             file.close()
 
         except Exception as ex:
 
             print "Error loading masternode state from file."
+            print ex
             print "Please repair the masternode archive and try again."
             print "Shutting down."
             sys.exit()
