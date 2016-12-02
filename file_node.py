@@ -105,17 +105,15 @@ class FileNode:
 
     def handleConnection(self, sock, address):
 
-        # get data
         try:
-            request = self.readJSONFromSock(sock)
+            request = self.readJSONFromSock(sock, address)
         except:
-            print "Error getting data from " + str(sock.getpeername()) + " in 'handleConnection'"
+            print "Error getting data from " + str(address) + " in 'handleConnection'"
             print "Closing socket."
             sock.close()
 
         # handle request
         try:
-
             if not 'type' in request:
                 raise error("Bad request to filenode recieved from " + str(address))
 
@@ -143,7 +141,7 @@ class FileNode:
                 raise error("Invalid request to file node from " + str(address))
 
         except Exception as ex:
-            print "An exception with name \n" + str(ex) + \
+            print "An exception in 'handleConnection' with name \n" + str(ex) + \
                   "\n was raised. Closing socket...\n"
             sock.close()
             return
@@ -152,12 +150,12 @@ class FileNode:
     def initiateMasterConnect(self):
         pass
 
-    def handleFileStore(self, socket, address, request):
+    def handleFileStore(self, clientSocket, address, request):
 
         try:
-            # make sure request is good
             if not ('len' in request and 'path' in request):
                 raise error("Incorrect fields present in STORE JSON.")
+
             elif request['len'] is None or request['path'] is None:
                 raise error("Len and path fields initialized to None in STORE JSON")
 
@@ -165,74 +163,90 @@ class FileNode:
             if not isinstance(nBytesExpected, int):
                 raise error("Len field is not an integer in STORE request from " + str(address))
 
+            # hash filepath to get file handle
             path   = request['path']
             m = hashlib.md5()
             m.update(path)
             pathHashStr = str(m.hexdigest())
+
             chunkFilename = self.dirpath + '/' + pathHashStr + RAWFILE_EXT
             metaFilename  = self.dirpath + '/' + pathHashStr + META_EXT
-
             res = Response(ResType.ok)
-            socket.send(res.toJson())
+            clientSocket.send(res.toJson())
 
             # read in the file
             nRecvd = 0
             h = hashlib.md5()
 
-            # TODO: check that it creates a new file
+
             with io.open(chunkFilename, 'wb') as cFile:
 
                 while nRecvd < nBytesExpected:
-                    newBytes = socket.recv(setup.BUFSIZE)
+
+                    newBytes = clientSocket.recv(setup.BUFSIZE)
                     nRecvd = nRecvd + len(newBytes)
-                    encodedBytes = newBytes.encode(DATA_ENCODING)
+                    print "Received " + str(nRecvd) + " of " + str(nBytesExpected) + " bytes"
+                    print "raw string: " + str(newBytes)
+                    encodedBytes = bytearray(newBytes)
+                    print "encoded bytes: " + str(encodedBytes)
                     n = cFile.write(encodedBytes)
                     h.update(encodedBytes)
 
+            dataChecksum = h.hexdigest()
+
             with io.open(metaFilename, 'wb') as mFile:
-                metadata = {'checksum': h.hexdigest()}
+                metadata = {'checksum': dataChecksum}
                 mFile.write(str(metadata))
 
             print "Done writing file " + str(path) + " to disk..."
 
             # send a hash of the new file to the server to confirm integrity
-            request = Request(type = ReqType.n2m_verify)
-            mastersock = self.reqToMaster(request)
-            res = self.readJSONFromSock(mastersock)
+            request = Request(ReqType.n2m_update,
+                              data = self.nodeID,
+                              path = path,
+                              chksum = dataChecksum).toJson()
 
+            # wait for verification response
+            mastersock = self.reqToMaster(request)
+            # res = self.readJSONFromSock(mastersock, setup.MASTER_NODE_ADDR)
             mastersock.close()
 
+            clientSocket.close()
 
         except Exception as ex:
-            print "An exception with name \n" + str(ex) + \
+            print "An exception in 'handleFileStore' with name \n" + str(ex) + \
                   "\n was raised. Closing socket...\n"
-            socket.close()
+            clientSocket.close()
 
     def reqToMaster(self, request):
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.connect(setup.MASTER_NODE_ADDR)
             sock.send(request)
-            sock.close()
         except socket.error as e:
-            raise DFSError("Socket error with value " + str(e) + " in function 'reqToMaster'.")
+            raise DFSError("Socket error in 'reqToMaster'" + \
+                           " with value " + str(e) + " in function 'reqToMaster'.")
+        return sock
 
-    def readJSONFromSock(self, sock):
+    def readJSONFromSock(self, sock, addr):
         data = ''
         while True:
             try:
                 data += sock.recv(setup.BUFSIZE)
-                request = json.loads(data)
+                obj = json.loads(data)
                 break
             except socket.error as ex:
                 print "Error reading from socket -- connection may have broken."
                 sock.close()
                 return
             except Exception as ex:
-                print "Partial read from " + str(sock.getpeername()) + " -- have not yet receved full JSON."
+                print "Partial read from " + str(addr) + " -- have not yet receved full JSON."
+                time.sleep(0.5)
                 continue
 
-        if not data: raise DFSError("No data recieved from client in getResponse")
+        if not data: raise DFSError("No data recieved in readJSONFromSock")
+
+        return obj
 
 
 

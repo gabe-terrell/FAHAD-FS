@@ -3,20 +3,24 @@ import pickle
 import time
 from node_record import NodeRec
 import hashlib
+from error_handling import DFSError
 
 class DataRecord(object):
 
-    def __init__(self, filepath, nodeIDList, sock = None):
-        self.filepath     = filepath
-        self.nodeIDList   = nodeIDList
-        self.timecreated  = time.time()
-        self.timemodified = self.timecreated
-        self.timeaccessed = self.timecreated
-        self.verified     = False
-        self.tempsock     = sock
-        cs = hashlib.md5()
-        cs.update(path)
-        self.checksum = str(cs.hexdigest())
+    def __init__(self, filepath, nodeIDList):
+        try:
+            self.filepath     = filepath
+            self.nodeIDList   = nodeIDList
+            self.timecreated  = time.time()
+            self.timemodified = self.timecreated
+            self.timeaccessed = self.timecreated
+            self.verified     = False
+            cs = hashlib.md5()
+            cs.update(filepath)
+            self.checksum = str(cs.hexdigest())
+        except Exception as e:
+            raise DFSError("Error initializing DataRecord for file " + str(filepath))
+
 
 
 class Registry(object):
@@ -71,7 +75,7 @@ class Registry(object):
             pickle.dump(arch, file)
 
     def addFile(self, rec):
-        self.data[rec.filename] = rec
+        self.data[rec.filepath] = rec
         self.saveState()
 
 

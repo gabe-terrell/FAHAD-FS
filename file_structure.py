@@ -70,6 +70,3 @@ class File:
         #       MasterNode.activenodes or MasterNode.standbynodes
         #       which will return the richer NodeRec object ('node_record.py')
 		self.nodes = nodes
-
-class Node:
-	pass

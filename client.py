@@ -1,4 +1,4 @@
-import sys, os, ntpath, socket, json
+import sys, os, ntpath, socket, json, hashlib
 from threading import Thread
 from setup import MASTER_CLIENT_ADDR, BUFSIZE
 from client_server_protocol import ClientRequestType, ClientRequest
@@ -71,8 +71,9 @@ def download(sever_file_path, local_dir):
 
 def upload(local_file_path, server_dir):
 
-    def Request(path, size, name):
-        return ClientRequest(ClientRequestType.upload, serverPath=path, filesize=size, name=name)
+    def Request(path, size, name, checksum):
+        return ClientRequest(ClientRequestType.upload, serverPath=path,
+            filesize=size, name=name, checksum=checksum)
 
     def filename(path):
         head, tail = ntpath.split(path)
@@ -85,7 +86,18 @@ def upload(local_file_path, server_dir):
         with open(local_file_path, 'r') as file:
             size = os.path.getsize(local_file_path)
             s = connect_to_server()
-            res = message_socket(s, Request(server_dir, size, filename(local_file_path)))
+
+            # calculate checksum
+            m = hashlib.md5()
+            while True:
+                bytes = file.read(BUFFER_SIZE)
+                n = len(bytes)
+                m.update(bytes)
+                if BUFFER_SIZE > n: break
+
+            checksum = m.hexdigest()
+
+            res = message_socket(s, Request(server_dir, size, filename(local_file_path), checksum))
 
             if res and res['success']:
                 print res['output']
@@ -100,36 +112,45 @@ def upload(local_file_path, server_dir):
                 uploadThread = Thread(target=target, args=args)
                 uploadThread.start()
 
+            # Wait for upload status from server
+            while True:
+                response = readJSONFromSock(s, MASTER_CLIENT_ADDR)
+                if response:
+                    print response['output']
+                    if response['success']:
+                        return
+                    else:
+                        address = (response['address'], response['port'])
+                        args = [local_file_path, server_path, address]
+                        uploadThread = Thread(target=target, args=args)
+                        uploadThread.start()
+
             # TODO: once the server is sending "success" messages for successful checksum comparison,
             #       read from the server to check upload sucess
 
-            data = ''
-            while True
-                try:
-                    data += s.recv(setup.BUFSIZE)
-                    request = json.loads(data)
-                    break
-                except socket.error as ex:
-                    print "Error reading from socket -- connection may have broken."
-                    s.close()
-                    return
-                except Exception as ex:
-                    print "partial read -- have not yet receved full json"
-                    continue
-
-            try:
-                if 'success' in request:
-                    print "Recieved verification response from Master Node with value: "
-                    print request['output']
-                    return
-                else:
-                    pass
-            except Exception as ex:
-                print "Problem reading from response JSON."
-                print "Aborting with unverified upload..."
-
     except Exception as ex:
         print "Exception raised with name: \n" + str(ex)
+
+def readJSONFromSock(sock, addr):
+    data = ''
+    while True:
+        try:
+            data += sock.recv(BUFFER_SIZE)
+            obj = json.loads(data)
+            break
+        except socket.error as ex:
+            print "Error reading from socket -- connection may have broken."
+            sock.close()
+            return
+        except Exception as ex:
+            print "Partial read from " + str(addr) + " -- have not yet receved full JSON."
+            time.sleep(0.01)
+            continue
+
+    if not data: raise DFSError("No data recieved in readJSONFromSock")
+
+    return obj
+
 
 def upload_to_node(local_file_path, server_file_path, node_address):
 
@@ -141,20 +162,22 @@ def upload_to_node(local_file_path, server_file_path, node_address):
         s = connect_to_node(node_address)
         res = message_socket(s, Request(server_file_path, size))
 
-        print "Sending store request to node"
+        print "Sending data transfer request to filenode"
         if res and 'type' in res and res['type'] is FileResponseType.ok:
             pass
         else:
             print "Did not receive ack from filenode"
             server_error()
 
-        print "Sending Data to filenode"
+        print "Sending data to filenode"
         while True:
             data = file.read(BUFFER_SIZE)
             if data:
                 s.send(data)
             else:
                 break
+
+        s.close()
 
 def main(argc, argv):
 

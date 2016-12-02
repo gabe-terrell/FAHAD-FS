@@ -4,7 +4,6 @@ class ReqType(object):
     m2n_kill = 0
     n2m_update = 7
     n2m_wakeup = 8
-    n2m_verify = 9
     store = 1
     delete = 3
     retrieve = 4

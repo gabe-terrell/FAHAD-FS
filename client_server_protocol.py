@@ -7,13 +7,14 @@ class ClientRequestType(object):
 
 class ClientRequest(object):
     def __init__(self, type, command = None, serverPath = None, filesize = None,
-                 name = None):
+                 name = None, checksum = None):
 
         self.type = type
         self.command = command
         self.serverPath = serverPath
         self.filesize = filesize
         self.name = name
+        self.checksum = checksum
 
     def toJson(self):
         return json.dumps(self, default = lambda o: o.__dict__,
