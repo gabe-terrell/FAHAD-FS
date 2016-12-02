@@ -3,7 +3,7 @@ from threading import Thread
 from threaded_server import ThreadedServer
 from file_structure import Directory, File
 from client_server_protocol import ClientRequestType, ClientResponse
-from filenode_master_protocol import *
+from filenode_protocol import *
 from master_registry import Registry, DataRecord
 from viewer import Viewer
 from error_handling import DFSError

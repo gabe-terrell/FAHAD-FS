@@ -2,9 +2,9 @@ import sys, os, ntpath, socket, json, hashlib
 from threading import Thread
 from setup import MASTER_CLIENT_ADDR, BUFSIZE
 from client_server_protocol import ClientRequestType, ClientRequest
-from filenode_master_protocol import ReqType as FileRequestType
-from filenode_master_protocol import ResType as FileResponseType
-from filenode_master_protocol import Request as FileRequest
+from filenode_protocol import ReqType as FileRequestType
+from filenode_protocol import ResType as FileResponseType
+from filenode_protocol import Request as FileRequest
 
 BUFFER_SIZE = BUFSIZE
 

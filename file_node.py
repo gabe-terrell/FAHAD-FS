@@ -9,7 +9,7 @@ import json
 import errno
 import hashlib
 from subprocess import call
-from filenode_master_protocol import *
+from filenode_protocol import *
 from threaded_server import ThreadedServer
 from error_handling import DFSError
 
@@ -186,9 +186,7 @@ class FileNode:
                     newBytes = clientSocket.recv(setup.BUFSIZE)
                     nRecvd = nRecvd + len(newBytes)
                     print "Received " + str(nRecvd) + " of " + str(nBytesExpected) + " bytes"
-                    print "raw string: " + str(newBytes)
                     encodedBytes = bytearray(newBytes)
-                    print "encoded bytes: " + str(encodedBytes)
                     n = cFile.write(encodedBytes)
                     h.update(encodedBytes)
 
