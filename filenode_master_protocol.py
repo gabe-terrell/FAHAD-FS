@@ -1,4 +1,5 @@
 import json
+from client_server_protocol import JsonObject
 
 class ReqType(object):
     m2n_kill = 0
@@ -21,7 +22,7 @@ class ResType(object):
 
 
 
-class Request(object):
+class Request(JsonObject):
 
     def __init__(self, type, data = None, length = None, path = None, chksum = None):
         self.type = type
@@ -30,18 +31,10 @@ class Request(object):
         self.path = path
         self.chksum = chksum
 
-    def toJson(self):
-        return json.dumps(self, default = lambda o: o.__dict__,
-                          sort_keys = True, indent = 4)
-
-class Response(object):
+class Response(JsonObject):
 
     def __init__(self, type, data = None, length = None, path = None):
         self.type = type
         self.data = data
         self.len  = length
         self.path = path
-
-    def toJson(self):
-        return json.dumps(self, default = lambda o: o.__dict__,
-                          sort_keys = True, indent = 4)

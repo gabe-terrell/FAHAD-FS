@@ -1,11 +1,16 @@
 import json
 
+class JsonObject(object):
+	def toJson(self):
+	    return json.dumps(self, default = lambda o: o.__dict__,
+	                      sort_keys = False, indent = 4)
+
 class ClientRequestType(object):
     viewer = 1
     download = 2
     upload = 3
 
-class ClientRequest(object):
+class ClientRequest(JsonObject):
     def __init__(self, type, command = None, serverPath = None, filesize = None,
                  name = None, checksum = None):
 
@@ -16,18 +21,10 @@ class ClientRequest(object):
         self.name = name
         self.checksum = checksum
 
-    def toJson(self):
-        return json.dumps(self, default = lambda o: o.__dict__,
-                          sort_keys = False, indent = 4)
-
-class ClientResponse(object):
+class ClientResponse(JsonObject):
     def __init__(self, type, output, success, address = None, port = None):
         self.type = type
         self.output = output
         self.success = success
         self.address = address
         self.port = port
-
-    def toJson(self):
-        return json.dumps(self, default = lambda o: o.__dict__,
-                          sort_keys = False, indent = 4)

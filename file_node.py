@@ -186,9 +186,9 @@ class FileNode:
                     newBytes = clientSocket.recv(setup.BUFSIZE)
                     nRecvd = nRecvd + len(newBytes)
                     print "Received " + str(nRecvd) + " of " + str(nBytesExpected) + " bytes"
-                    print "raw string: " + str(newBytes)
+                    #print "raw string: " + str(newBytes)
                     encodedBytes = bytearray(newBytes)
-                    print "encoded bytes: " + str(encodedBytes)
+                    #print "encoded bytes: " + str(encodedBytes)
                     n = cFile.write(encodedBytes)
                     h.update(encodedBytes)
 
