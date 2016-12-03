@@ -9,7 +9,7 @@ import json
 import errno
 import hashlib
 from subprocess import call
-from filenode_protocol import *
+from filenode_master_protocol import *
 from threaded_server import ThreadedServer
 from error_handling import DFSError
 
@@ -251,7 +251,14 @@ class FileNode:
     def handleFileRetrieve(self, socket, address, request):
         # get file from storage
         # send it in chunks that won't be too big for ram
-        pass
+        try:
+            path = request['path']
+            print "Received download request for " + path
+            # TODO: Convert path to filenode file scheme to get the file, then send to client
+
+            socket.close()
+        except Exception as ex:
+            pass
 
     def handleFileDelete(self, socket, address, request):
         # delete the file

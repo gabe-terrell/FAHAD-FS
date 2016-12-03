@@ -3,7 +3,7 @@ from threading import Thread
 from threaded_server import ThreadedServer
 from file_structure import Directory
 from client_server_protocol import ClientRequestType, ClientResponse
-from filenode_protocol import *
+from filenode_master_protocol import *
 from master_registry import Registry, DataRecord
 from viewer import Viewer
 from error_handling import DFSError
@@ -97,10 +97,14 @@ class MasterNode(object):
                 command = request['command']
                 self.handleViewerRequest(socket, viewer, command)
             else:
-                raise DFSError("Invalid Viewer Request")
+                raise DFSError(("Exception raised in 'processClientRequest/viewer': \n" + str(ex)))
 
         elif type == ClientRequestType.download:
-            pass
+            try:
+                path = request['serverPath']
+                self.handleDownloadRequest(socket, path)
+            except Exception as ex:
+                raise DFSError(("Exception raised in 'processClientRequest/download': \n" + str(ex)))
 
         elif type == ClientRequestType.upload:
             try:
@@ -110,7 +114,7 @@ class MasterNode(object):
                 checksum = request['checksum']
                 self.handleUploadRequest(socket, path, size, name, checksum)
             except Exception as ex:
-                raise DFSError(("Exception raised in 'processClientRequest': \n" + str(ex)))
+                raise DFSError(("Exception raised in 'processClientRequest/upload': \n" + str(ex)))
 
         else:
             raise error("Invalid Type Request")
@@ -127,7 +131,31 @@ class MasterNode(object):
 
 
     def handleDownloadRequest(self, socket, path):
-        pass
+        node = self.findNodeWithFile(path)
+        if node:
+            response = ClientResponse(type = ClientRequestType.download,
+                                      output = "Initiating Download...",
+                                      success = True,
+                                      address = node.address[0],
+                                      port = node.address[1])
+        else:
+            response = ClientResponse(type = ClientRequestType.download,
+                                      output = "File not found",
+                                      success = False)
+        socket.send(response.toJson())
+
+
+    # TODO: Right now, this naively looks until it finds a node that owns the file
+    # TODO: We should change this to give priority to more available nodes first
+    def findNodeWithFile(self, path):
+        if path in self.reg.data:
+            record = self.reg.data[path]
+            nodesWithFile = list(set(record.nodeIDList) & set(self.reg.activenodes.keys()))
+            if nodesWithFile:
+                nodeId = nodesWithFile[0]
+                node = self.reg.activenodes[nodeId]
+                return node
+        return None
 
     def handleUploadRequest(self, socket, path, filesize, filename, checksum):
 

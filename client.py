@@ -2,9 +2,9 @@ import sys, os, ntpath, socket, json, hashlib, time
 from threading import Thread
 from setup import MASTER_CLIENT_ADDR, BUFSIZE
 from client_server_protocol import ClientRequestType, ClientRequest
-from filenode_protocol import ReqType as FileRequestType
-from filenode_protocol import ResType as FileResponseType
-from filenode_protocol import Request as FileRequest
+from filenode_master_protocol import ReqType as FileRequestType
+from filenode_master_protocol import ResType as FileResponseType
+from filenode_master_protocol import Request as FileRequest
 
 BUFFER_SIZE = BUFSIZE
 
@@ -66,18 +66,55 @@ def file_viewer():
     else:
         server_error()
 
-def download(sever_file_path, local_dir):
-    print("download " + sever_file_path + " to " + local_dir)
+def filename(path):
+    head, tail = ntpath.split(path)
+    return tail or ntpath.basename(head)
+
+def download(server_file_path, local_dir):
+    
+    file = filename(server_file_path)
+    path = local_dir + '/' + file if local_dir[-1] != '/' else local_dir + file
+    request = ClientRequest(ClientRequestType.download, serverPath = server_file_path)
+    
+    try:
+        with open(path, 'wb') as file:
+            s = connect_to_server()
+            res = message_socket(s, request)
+
+            print res
+            print res['output']
+            if not res['success']:
+                return
+
+            address = (res['address'], res['port'])
+            download_from_socket(file, path, server_file_path, address)
+
+    except Exception as ex:
+        print "Exception raised with name: \n" + str(ex)
+
+def download_from_socket(file, local_file_path, server_file_path, node_address):
+    
+    request = FileRequest(FileRequestType.retrieve, path=server_file_path)
+    s = connect_to_node(node_address)
+    res = message_socket(s, request)
+
+    print "Sending data transfer request to filenode"
+    if res and 'type' in res and res['type'] is FileResponseType.ok:
+        pass
+    else:
+        print "Did not receive ack from filenode"
+        server_error()
+
+    # TODO: Receive data from file and save to passed file param
+
+    s.close()
+        
 
 def upload(local_file_path, server_dir):
 
     def Request(path, size, name, checksum):
         return ClientRequest(ClientRequestType.upload, serverPath=path,
             filesize=size, name=name, checksum=checksum)
-
-    def filename(path):
-        head, tail = ntpath.split(path)
-        return tail or ntpath.basename(head)
 
     def serverpath(file, path):
         return path + '/' + file if path[-1] != '/' else path + file
@@ -192,12 +229,12 @@ def main(argc, argv):
     elif flag == "-d":
         try:
             assert argc == 4
-            sever_file_path = argv[2]
+            server_file_path = argv[2]
             local_dir = argv[3]
         except:
             usage_error()
         else:
-            download(sever_file_path, local_dir)
+            download(server_file_path, local_dir)
 
     elif flag == "-u":
         try:
