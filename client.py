@@ -100,12 +100,21 @@ def download_from_socket(file, local_file_path, server_file_path, node_address):
 
     print "Sending data transfer request to filenode"
     if res and 'type' in res and res['type'] is FileResponseType.ok:
-        pass
+        totalBytes = res['len']
+        res = FileRequest(FileResponseType.ok)
+        s.send(res.toJson())
     else:
         print "Did not receive ack from filenode"
         server_error()
 
-    # TODO: Receive data from file and save to passed file param
+    nRecvd = 0
+    while nRecvd < totalBytes:
+        newBytes = s.recv(BUFSIZE)
+        nRecvd += len(newBytes)
+        print "Received " + str(nRecvd) + " of " + str(totalBytes) + " bytes"
+        # encodedBytes = bytearray(newBytes)
+        # n = file.write(encodedBytes)
+        file.write(newBytes)
 
     s.close()
         

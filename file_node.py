@@ -150,6 +150,11 @@ class FileNode:
     def initiateMasterConnect(self):
         pass
 
+    def hashForPath(self, path):
+        m = hashlib.md5()
+        m.update(path)
+        return str(m.hexdigest())
+
     def handleFileStore(self, clientSocket, address, request):
 
         try:
@@ -164,13 +169,11 @@ class FileNode:
                 raise error("Len field is not an integer in STORE request from " + str(address))
 
             # hash filepath to get file handle
-            path   = request['path']
-            m = hashlib.md5()
-            m.update(path)
-            pathHashStr = str(m.hexdigest())
-
+            path = request['path']
+            pathHashStr = self.hashForPath(path)
             chunkFilename = self.dirpath + '/' + pathHashStr + RAWFILE_EXT
             metaFilename  = self.dirpath + '/' + pathHashStr + META_EXT
+            
             res = Response(ResType.ok)
             clientSocket.send(res.toJson())
 
@@ -254,11 +257,35 @@ class FileNode:
         try:
             path = request['path']
             print "Received download request for " + path
+            pathHashStr = self.hashForPath(path)
+            chunkFilename = self.dirpath + '/' + pathHashStr + RAWFILE_EXT
+            print chunkFilename
             # TODO: Convert path to filenode file scheme to get the file, then send to client
 
-            socket.close()
+            with open(chunkFilename, 'rb') as file:
+                size = os.path.getsize(chunkFilename)
+                ack = Response(ResType.ok, path=path, length=size)
+                socket.send(ack.toJson())
+
+                res = self.readJSONFromSock(socket, address)
+                if res and 'type' in res and res['type'] is ResType.ok:
+                    pass
+                else:
+                    raise DFSError("Did not receive ack from client")
+
+                print "Sending data to client"
+                while True:
+                    data = file.read(setup.BUFSIZE)
+                    if data:
+                        socket.send(data)
+                    else:
+                        break
+
         except Exception as ex:
-            pass
+            raise DFSError("Socket error in 'handleFileRetrieve'" + \
+                           " with value " + str(ex) + " in function 'handleFileRetrieve'.")
+
+        socket.close()
 
     def handleFileDelete(self, socket, address, request):
         # delete the file

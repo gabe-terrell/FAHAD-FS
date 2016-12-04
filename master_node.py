@@ -198,6 +198,9 @@ class MasterNode(object):
                     dir.files.add(filename)
 
                     # add to registry
+                    # TODO: If one of these nodes dies before file retrieval, we'll point the client to a node
+                    # that doesn't actually have the file... this either needs to be updated upon validation
+                    # or we need to ping each filenode to ensure it's alive before committing (or both)
                     rec = DataRecord(serverFile, ids)
                     self.reg.addFile(rec)
                     # don't close socket because filenode-facing thread will use it to send verification ack
