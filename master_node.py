@@ -43,7 +43,6 @@ class MasterNode(object):
         self.clientServer = ThreadedServer(setup.MASTER_CLIENT_ADDR)
         self.nodeServer = ThreadedServer(setup.MASTER_NODE_ADDR)
         self.uploadSessions = {}
-
         self.validateRegistry()
 
     def validateRegistry(self):
@@ -116,8 +115,53 @@ class MasterNode(object):
             except Exception as ex:
                 raise DFSError(("Exception raised in 'processClientRequest/upload': \n" + str(ex)))
 
+
+        elif type == ClientRequestType.rm: # 3-way w/ filenode
+            pass
+
+        elif type == ClientRequestType.mv: # 3-way w/ filenode
+            pass
+
+        elif type == ClientRequestType.mkdir: # no filenode connection
+            try:
+                path = request['serverPath']
+                dirname = request['name']
+                wd = self.root.cd(path)
+                pass
+
+
+            except Exception as ex:
+                raise DFSError(("Exception raised in 'processClientRequest/mkdir': \n" + str(ex)))
+
+        elif type == ClientRequestType.rmdir: # 3-way with filenode if recursive data deletion
+            try:
+                path = request['serverPath']
+                name = request['name']
+            except Exception as ex:
+                raise DFSError(("Exception raised in 'processClientRequest/rmdir': \n" + str(ex)))
+
+        elif type == ClientRequestType.stat:
+            try:
+                path = request['serverPath']
+                name = request['name']
+                fullpath = path + name
+
+                if fullpath in self.reg.data:
+                    filedata = self.reg.data[fullpath]
+                    res = ClientResponse(type = type, output = filedata, success = True)
+                else:
+                    errmsg = "Error: " + str(fullpath) + " does not exist."
+                    res = ClientResponse(type = type, output = errmsg, success = False)
+
+                socket.send(res.toJson())
+                socket.close()
+
+            except Exception as ex:
+                raise DFSError(("Exception raised in 'processClientRequest/stat': \n" + str(ex)))
+
         else:
             raise error("Invalid Type Request")
+
 
     def handleViewerRequest(self, socket, viewer, command):
         tprint("Viewer Request: " + command)

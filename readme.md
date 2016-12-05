@@ -11,7 +11,8 @@ Three main components:
 #### Usage:
 
 1. Start the Master Node:
-    - ```$ python master_node.py```
+    1. ```$ ./cleanup.sh```
+    2. ```$ python master_node.py```
 2. Start a File Node:
     - ```$ python file_node.py```
 3. Run a client:
@@ -31,6 +32,13 @@ Three main components:
     - [X] Multiple client access to filesystem
     - [ ] Safe concurrent accessing (to avoid simultaneous accesses on the same resource)
 - [X] Multiple filenodes on same host machine (Helpful for testing, unlikely in "production")
+- [X] Miscellaneous filesystem operations:
+    - [X] STAT: ```python client.py --stat 'path_on_server'```
+    - [X] CP: ...
+    - [ ] MKDIR: ...
+    - [ ] RMDIR: ...
+    - [ ] MV: ...
+    - [ ] RM: ...
 - [ ] __File upload direct from client to filenode__
     - [X] server handshake with location passing
     - [X] transmission from client to filenode and storage on filenode local filesystem

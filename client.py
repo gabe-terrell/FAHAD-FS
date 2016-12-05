@@ -23,7 +23,7 @@ def connect_to_node(addr):
     s.connect(addr)
     return s
 
-def connect_to_server():
+def connect_to_master():
     return connect_to_node(MASTER_CLIENT_ADDR)
 
 def message_socket(s, message):
@@ -44,7 +44,7 @@ def file_viewer():
     def Request(command):
         return ClientRequest(ClientRequestType.viewer, command = command)
 
-    s = connect_to_server()
+    s = connect_to_master()
     res = message_socket(s, Request('init'))
 
     if 'output' in res and res['output'] == 'OK':
@@ -71,14 +71,14 @@ def filename(path):
     return tail or ntpath.basename(head)
 
 def download(server_file_path, local_dir):
-    
+
     file = filename(server_file_path)
     path = local_dir + '/' + file if local_dir[-1] != '/' else local_dir + file
     request = ClientRequest(ClientRequestType.download, serverPath = server_file_path)
-    
+
     try:
         with open(path, 'wb') as file:
-            s = connect_to_server()
+            s = connect_to_master()
             res = message_socket(s, request)
 
             print res
@@ -93,7 +93,7 @@ def download(server_file_path, local_dir):
         print "Exception raised with name: \n" + str(ex)
 
 def download_from_socket(file, local_file_path, server_file_path, node_address):
-    
+
     request = FileRequest(FileRequestType.retrieve, path=server_file_path)
     s = connect_to_node(node_address)
     res = message_socket(s, request)
@@ -117,7 +117,7 @@ def download_from_socket(file, local_file_path, server_file_path, node_address):
         file.write(newBytes)
 
     s.close()
-        
+
 
 def upload(local_file_path, server_dir):
 
@@ -131,7 +131,7 @@ def upload(local_file_path, server_dir):
     try:
         with open(local_file_path, 'rb') as file:
             size = os.path.getsize(local_file_path)
-            s = connect_to_server()
+            s = connect_to_master()
 
             # calculate checksum
             m = hashlib.md5()
@@ -189,7 +189,7 @@ def readJSONFromSock(sock, addr):
             time.sleep(0.01)
             continue
 
-    if not data: 
+    if not data:
         raise DFSError("No data recieved in readJSONFromSock")
 
     return obj
@@ -221,6 +221,25 @@ def upload_to_node(local_file_path, server_file_path, node_address):
                 break
 
         s.close()
+
+def stat(server_file_path):
+    try:
+        req = ClientRequest(type = ClientRequestType.stat,
+                        serverPath = server_file_path,
+                        name = '')
+        s = connect_to_master()
+        s.send(req.toJson())
+        res = readJSONFromSock(s, 'masternode')
+        if 'success' in res and res['success'] and 'output' in res:
+            print res['output']
+        elif not res['success']:
+            print "STAT Failure."
+            if 'output' in res: print res['output']
+
+    except Exception as e:
+        DFSError("Error raised in 'stat' due to exception \n" + str(ex) +
+                 "\nShutting down.")
+        sys.exit()
 
 def main(argc, argv):
 
@@ -254,6 +273,15 @@ def main(argc, argv):
             usage_error()
         else:
             upload(local_file_path, server_dir)
+
+    elif flag == '--stat':
+        try:
+            assert argc == 3
+            full_server_path = argv[2]
+        except:
+            usage_error()
+        else:
+            stat(full_server_path)
 
     else:
         usage_error()

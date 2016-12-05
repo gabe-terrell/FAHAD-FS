@@ -14,7 +14,7 @@ from threaded_server import ThreadedServer
 from error_handling import DFSError
 
 
-NODE_FILEPATH = "./nodefiles/"
+NODE_FILEPATH = str(setup.HOMEDIR) + "/nodefiles/"
 RAWFILE_EXT   = ".bin"
 META_EXT      = ".meta"
 DATA_ENCODING = 'utf-8'
@@ -173,7 +173,7 @@ class FileNode:
             pathHashStr = self.hashForPath(path)
             chunkFilename = self.dirpath + '/' + pathHashStr + RAWFILE_EXT
             metaFilename  = self.dirpath + '/' + pathHashStr + META_EXT
-            
+
             res = Response(ResType.ok)
             clientSocket.send(res.toJson())
 

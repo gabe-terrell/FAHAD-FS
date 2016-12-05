@@ -14,12 +14,16 @@ class DataRecord(object):
             self.timecreated  = time.time()
             self.timemodified = self.timecreated
             self.timeaccessed = self.timecreated
-            self.verified     = False
             cs = hashlib.md5()
             cs.update(filepath)
             self.checksum = str(cs.hexdigest())
         except Exception as e:
-            raise DFSError("Error initializing DataRecord for file " + str(filepath))
+            raise DFSError("Error initializing DataRecord for file " + str(filepath) +
+                           " with exception " + str(e))
+
+    def toJSON(self):
+	    return json.dumps(self, default = lambda o: o.__dict__,
+                          sort_keys = False, indent = 4)
 
 
 
