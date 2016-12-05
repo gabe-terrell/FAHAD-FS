@@ -12,7 +12,14 @@ def usage_error():
     print "Usage: client.py -v"
     print "Usage: client.py -d <sever_file_path> <local_dir>"
     print "Usage: client.py -u <local_file_path> <server_dir>"
+    print "Usage: client.py --stat <server_file_path>"
+    print "Usage: client.py --rm <server_file_path>"
+    print "Usage: client.py --rmdir <server_dir_path>"
+    print "Usage: client.py --mkdir <server_dir_path>"
+    print "Usage: client.py --cp <old_server_location> <new_server_location>"
+    print "Usage: client.py --mv <old_server_location> <new_server_location>"
     sys.exit()
+
 
 def server_error():
     print "Error from server"
@@ -241,6 +248,26 @@ def stat(server_file_path):
                  "\nShutting down.")
         sys.exit()
 
+def rm(server_file_path):
+    print "RM " + str(server_file_path)
+    pass
+
+def mv(server_path_old, server_path_new):
+    print "MV: " + str(server_path_old) " to " + str(server_path_new)
+    pass
+
+def mkdir(server_dir_path, dirname):
+    print "MKDIR " + str(dirname) + " in " + str(server_dir_path)
+    pass
+
+def rmdir(server_dir_path):
+    print "RMDIR " + str(server)
+    pass
+
+def copy(server_path_old, server_path_new)
+    print "COPY: " + str(server_path_old) " to " + str(server_path_new)
+    pass
+
 def main(argc, argv):
 
     try:
@@ -273,6 +300,53 @@ def main(argc, argv):
             usage_error()
         else:
             upload(local_file_path, server_dir)
+
+    elif flag == '--rm':
+        try:
+            assert argc == 3
+            full_server_path = argv[2]
+        except:
+            usage_error()
+        else:
+            rm(full_server_path)
+
+    elif flag == '--rmdir':
+        try:
+            assert argc == 3
+            full_server_path = argv[2]
+        except:
+            usage_error()
+        else:
+            rmdir(full_server_path)
+
+    elif flag == '--cp':
+        try:
+            assert argc == 4
+            old_path = argv[2]
+            new_path = argv[3]
+        except:
+            usage_error()
+        else:
+            copy(old_path, new_path)
+
+    elif flag == '--mv':
+        try:
+            assert argc == 4
+            old_path = argv[2]
+            new_path = argv[3]
+        except:
+            usage_error()
+        else:
+            mv(old_path, new_path)
+
+    elif flag == '--mkdir':
+        try:
+            assert argc == 3
+            full_server_path = argv[2]
+        except:
+            usage_error()
+        else:
+            mkdir(full_server_path)
 
     elif flag == '--stat':
         try:
