@@ -154,8 +154,15 @@ class MasterNode(object):
 
         elif type == ClientRequestType.rm: # 3-way w/ filenode
             pass
+            try:
+                path = request['serverPath']
+                name = request['name']
+                self.handleFileDeleteRequest(socket, path, name)
+            except Exception as ex:
+                raise DFSError(("Exception raised in 'processClientRequest/rm': \n" + str(ex)))
 
         elif type == ClientRequestType.mv: # 3-way w/ filenode
+            self.handleMVRequest(socket, newpath, oldpath)
             pass
 
         elif type == ClientRequestType.mkdir: # no filenode connection
@@ -163,10 +170,33 @@ class MasterNode(object):
                 path = request['serverPath']
                 dirname = request['name']
                 wd = self.root.cd(path)
-                pass
+                wd.mkdir(dirname)
+                res = ClientResponse(type = mkdir,
+                                     output = "New directory: " + str(path + dirname),
+                                     success = True)
+                socket.send(res.toJson())
+                socket.close()
 
             except Exception as ex:
-                raise DFSError(("Exception raised in 'processClientRequest/mkdir': \n" + str(ex)))
+                try:
+                    res = ClientResponse(type = mkdir,
+                                         output = "Error creating new directory.",
+                                         success = False)
+                    socket.send(res.toJson())
+                    socket.close()
+                except:
+                    raise DFSError(("Exception raised in 'processClientRequest/mkdir': \n" + str(ex)))
+                print "Failure to make new directory in MasterNode->processClientRequest->mkdir."
+                print "Disconnecting client."
+                socket.close()
+
+       elif type == ClientRequestType.copy: # 3-way with filenode
+           try:
+               path = request['serverPath']
+               filename = request['name']
+           except Exception as ex:
+               raise DFSError(("Exception raised in 'processClientRequest/copy': \n" + str(ex)))
+
 
             # # I didn't want to create a merge conflict, but I think this will work
             # # It just creatively reuses code from the viewer class
@@ -303,6 +333,14 @@ class MasterNode(object):
                 error("Directory path was not found")
         else:
             error("Directory must start with '/'")
+
+    def handleFileDeleteRequest(self, socket, path, name):
+        pass
+
+    def handleDirDeleteRequest(self, socket, path, name):
+        pass
+        # recursively delete files in the directory we are removing, which will
+        # call handleFileDeleteRequest
 
     def handleNodeRequest(self, socket, address):
 
