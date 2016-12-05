@@ -18,7 +18,7 @@ class Viewer:
             # otherwise, ignore empty output
             if result == None:
                 sys.exit()
-            if result:
+            if result and result[0] != '#':
                 print result
 
     def process(self, argc, argv):
@@ -61,8 +61,8 @@ class Viewer:
                 if '/' in dir_name:
                     return "Invalid directory name"
                 else:
-                    self.cur_dir.mkdir(dir_name)
-                    return ''
+                    newdir = self.cur_dir.mkdir(dir_name)
+                    return '#' + newdir.pwd() + '#'
 
         elif command == 'pwd':
             if argc != 1:
