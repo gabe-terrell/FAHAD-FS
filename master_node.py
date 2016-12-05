@@ -1,4 +1,4 @@
-import sys, setup, json, os, ast
+import sys, setup, json, os, ast, time, socket
 from threading import Thread
 from threaded_server import ThreadedServer
 from file_structure import Directory
@@ -10,6 +10,8 @@ from error_handling import DFSError
 
 _, CLIENT_PORT = setup.MASTER_CLIENT_ADDR
 _, NODE_PORT = setup.MASTER_NODE_ADDR
+
+PING_INTERVAL = 5 # seconds
 
 def tprint(obj):
     print obj
@@ -62,6 +64,35 @@ class MasterNode(object):
         nodeThread = Thread(target=target, args=[self.nodeServer])
         nodeThread.start()
 
+        while True:
+            self.runStatusCheck()
+            time.sleep(PING_INTERVAL)
+
+    def runStatusCheck(self):
+        print "Running status check on filenodes"
+        target = self.checkStatusOfNode
+        request = Request(type = ReqType.ping, data = None).toJson()
+        for node in self.reg.activenodes.values():
+            thread = Thread(target=target, args=[node, request])
+            thread.start()
+
+    def checkStatusOfNode(self, node, request):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(3)
+
+        try:
+            sock.connect(node.address)
+            sock.send(request)
+            res = self.readJSONFromSock(sock, node.address)
+            if res['type'] is ResType.ok:
+                print "Node " + str(node.id) + " passed the status check!"
+        except Exception as ex:
+            print "Node " + str(node.id) + " failed to acknowledge the status check!"
+            print ex
+            print "Removing Node " + str(node.id) + " from active node list"
+            del self.reg.activenodes[node.id]
+
+        sock.close()
 
     def __startServer(self, server):
         server.listen()
@@ -162,6 +193,17 @@ class MasterNode(object):
                raise DFSError(("Exception raised in 'processClientRequest/copy': \n" + str(ex)))
 
 
+            # I didn't want to create a merge conflict, but I think this will work
+            # It just creatively reuses code from the viewer class
+            try:
+                path = request['serverPath']
+                dirname = request['name']
+                command = ['cd', path]
+                output = viewer.process(len(command), command)
+                if output != None:
+                    command = 'mkdir ' + dirname
+                    self.handleViewerRequest(socket, viewer, command)
+
         elif type == ClientRequestType.rmdir: # 3-way with filenode if recursive data deletion
             try:
                 path = request['serverPath']
@@ -199,6 +241,13 @@ class MasterNode(object):
         else:
             argv = command.split()
             output = viewer.process(len(argv), argv)
+        if output and output[0] == '#':
+            arg = argv[0]
+            if arg == 'mkdir':
+                path = output[1:]
+                rec = DataRecord(path, [])
+                self.reg.addFile(rec)
+            output = ''
         response = ClientResponse(ClientRequestType.viewer, output, output != None)
         socket.send(response.toJson())
 
@@ -408,6 +457,27 @@ class MasterNode(object):
     #     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     #     clientsocket.connect(self.standbynodes[id].address)
     #     return socket
+
+    def readJSONFromSock(self, sock, addr):
+        data = ''
+        while True:
+            try:
+                data += sock.recv(setup.BUFSIZE)
+                obj = json.loads(data)
+                break
+            except socket.error as ex:
+                print "Error reading from socket -- connection may have broken."
+                sock.close()
+                return
+            except Exception as ex:
+                print "Partial read from " + str(addr) + " -- have not yet receved full JSON."
+                time.sleep(0.01)
+                continue
+
+        if not data: 
+            raise DFSError("No data recieved in readJSONFromSock")
+
+        return obj
 
     def killNode(self, nid):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

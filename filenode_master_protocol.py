@@ -10,6 +10,7 @@ class ReqType(object):
     retrieve = 4
     copy = 5
     rename = 6
+    ping = 9
 
 
 class ResType(object):

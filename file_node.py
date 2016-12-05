@@ -137,6 +137,9 @@ class FileNode:
             elif type is ReqType.m2n_kill:
                 self.handleKill(sock, address, request)
 
+            elif type is ReqType.ping:
+                self.handleStatusCheck(sock, address, request)
+
             else:
                 raise error("Invalid request to file node from " + str(address))
 
@@ -304,6 +307,10 @@ class FileNode:
         # if the kill signal isn't from the master, don't listen
         pass
 
+    def handleStatusCheck(self, socket, address, request):
+        print "Received status check from master!"
+        res = Response(ResType.ok)
+        socket.send(res.toJson())
 
 def usage_error():
     print "Usage: python file_node.py -test"
