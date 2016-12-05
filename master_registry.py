@@ -7,10 +7,11 @@ from error_handling import DFSError
 
 class DataRecord(object):
 
-    def __init__(self, filepath, nodeIDList):
+    def __init__(self, filepath, nodeIDList, dataChecksum):
         try:
             self.filepath     = filepath
             self.nodeIDList   = nodeIDList
+            self.dataChecksum = dataChecksum
             self.timecreated  = time.time()
             self.timemodified = self.timecreated
             self.timeaccessed = self.timecreated

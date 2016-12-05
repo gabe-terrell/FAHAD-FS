@@ -19,11 +19,12 @@ def tprint(obj):
 
 class UploadSession(object):
 
-    def __init__(self, path, checksum, nodeIds, clientsocket):
+    def __init__(self, path, checksum, nodeIds, clientsocket, dir):
         self.path = path
         self.checksum = checksum
         self.nodeIds = set(nodeIds)
         self.clientsocket = clientsocket
+        self.dir = dir
 
     def verify(self, checksum, nodeId):
         if nodeId in self.nodeIds:
@@ -65,8 +66,8 @@ class MasterNode(object):
         nodeThread.start()
 
         while True:
-            self.runStatusCheck()
             time.sleep(PING_INTERVAL)
+            self.runStatusCheck()
 
     def runStatusCheck(self):
         print "Running status check on filenodes"
@@ -91,6 +92,10 @@ class MasterNode(object):
             print ex
             print "Removing Node " + str(node.id) + " from active node list"
             del self.reg.activenodes[node.id]
+
+            for session in self.uploadSessions.values():
+                if node.id in session.nodeIds:
+                    session.nodeIds.remove(node.id)
 
         sock.close()
 
@@ -160,20 +165,19 @@ class MasterNode(object):
                 wd = self.root.cd(path)
                 pass
 
-
             except Exception as ex:
                 raise DFSError(("Exception raised in 'processClientRequest/mkdir': \n" + str(ex)))
 
-            # I didn't want to create a merge conflict, but I think this will work
-            # It just creatively reuses code from the viewer class
-            try:
-                path = request['serverPath']
-                dirname = request['name']
-                command = ['cd', path]
-                output = viewer.process(len(command), command)
-                if output != None:
-                    command = 'mkdir ' + dirname
-                    self.handleViewerRequest(socket, viewer, command)
+            # # I didn't want to create a merge conflict, but I think this will work
+            # # It just creatively reuses code from the viewer class
+            # try:
+            #     path = request['serverPath']
+            #     dirname = request['name']
+            #     command = ['cd', path]
+            #     output = viewer.process(len(command), command)
+            #     if output != None:
+            #         command = 'mkdir ' + dirname
+            #         self.handleViewerRequest(socket, viewer, command)
 
         elif type == ClientRequestType.rmdir: # 3-way with filenode if recursive data deletion
             try:
@@ -216,7 +220,7 @@ class MasterNode(object):
             arg = argv[0]
             if arg == 'mkdir':
                 path = output[1:]
-                rec = DataRecord(path, [])
+                rec = DataRecord(path, [], '')
                 self.reg.addFile(rec)
             output = ''
         response = ClientResponse(ClientRequestType.viewer, output, output != None)
@@ -252,7 +256,6 @@ class MasterNode(object):
 
     def handleUploadRequest(self, socket, path, filesize, filename, checksum):
 
-
         def error(message):
             response = ClientResponse(ClientRequestType.upload, message, False)
             socket.send(response.toJson())
@@ -284,19 +287,11 @@ class MasterNode(object):
 
                     serverFile = path + '/' + filename if path[-1] != '/' else path + filename
                     ids = [node.id for node in nodes]
-                    session = UploadSession(serverFile, checksum, ids, socket)
+                    session = UploadSession(serverFile, checksum, ids, socket, dir)
                     self.uploadSessions[serverFile] = session
 
-                    # add to tree
-                    dir.files.add(filename)
-
-                    # add to registry
-                    # TODO: If one of these nodes dies before file retrieval, we'll point the client to a node
-                    # that doesn't actually have the file... this either needs to be updated upon validation
-                    # or we need to ping each filenode to ensure it's alive before committing (or both)
-                    rec = DataRecord(serverFile, ids)
-                    self.reg.addFile(rec)
-                    # don't close socket because filenode-facing thread will use it to send verification ack
+                    if serverFile in self.reg.data:
+                        del self.reg.data[serverFile]
 
                 except Exception as ex:
                     raise DFSError("Exception raised in 'handleUploadRequest': \n" + str(ex))
@@ -378,6 +373,7 @@ class MasterNode(object):
             socket.close()
             self.killNode(nodeID)
 
+
     def handleNodeUpdate(self, socket, request):
         print "Received a node update message"
         try:
@@ -388,7 +384,17 @@ class MasterNode(object):
             session = self.uploadSessions[path]
             if session.verify(checksum, nodeId):
                 print "Node " + str(nodeId) + " has received " + path + " successfully"
+                
+                if path not in self.reg.data:
+                    session.dir.files.add(path.split('/')[-1])
+                    rec = DataRecord(path, [nodeId], checksum)
+                    self.reg.addFile(rec)
+
+                else:
+                    self.reg.data[path].nodeIDList.append(nodeId)
+
                 if session.finished():
+                    del self.uploadSessions[path]
                     response = ClientResponse(type = ClientRequestType.upload,
                                               output = "Upload Success",
                                               success = True)
