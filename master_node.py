@@ -164,6 +164,17 @@ class MasterNode(object):
             except Exception as ex:
                 raise DFSError(("Exception raised in 'processClientRequest/mkdir': \n" + str(ex)))
 
+            # I didn't want to create a merge conflict, but I think this will work
+            # It just creatively reuses code from the viewer class
+            try:
+                path = request['serverPath']
+                dirname = request['name']
+                command = ['cd', path]
+                output = viewer.process(len(command), command)
+                if output != None:
+                    command = 'mkdir ' + dirname
+                    self.handleViewerRequest(socket, viewer, command)
+
         elif type == ClientRequestType.rmdir: # 3-way with filenode if recursive data deletion
             try:
                 path = request['serverPath']
