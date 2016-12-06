@@ -1,5 +1,8 @@
 import sys, os, ntpath, socket, json, hashlib, time
 from threading import Thread
+import datetime
+from datetime import timedelta
+from error_handling import DFSError
 from setup import MASTER_CLIENT_ADDR, BUFSIZE
 from client_server_protocol import ClientRequestType, ClientRequest
 from filenode_master_protocol import ReqType as FileRequestType
@@ -38,12 +41,32 @@ def message_socket(s, message):
 
     s.send(message.toJson())
 
-    response = s.recv(BUFFER_SIZE)
+    return readJSONFromSock(s, str(s.getpeername()))
 
-    if response:
-        return json.loads(response)
-    else:
-        server_error()
+def readJSONFromSock(sock, addr):
+    data = ''
+    timeout_seconds = 60
+    wait_until = datetime.datetime.now() + timedelta(seconds = timeout_seconds)
+    while True:
+        try:
+            data += sock.recv(BUFFER_SIZE)
+            obj = json.loads(data)
+            break
+        except socket.error as ex:
+            print "Error reading from socket -- connection may have broken."
+            sock.close()
+            return
+        except Exception as ex:
+            if wait_until < datetime.datetime.now():
+                print "READ TIMED OUT."
+                sock.close()
+                return
+            continue
+
+    if not data:
+        raise DFSError("No data recieved in readJSONFromSock")
+
+    return obj
 
 # command, type
 def file_viewer():
@@ -180,27 +203,6 @@ def upload(local_file_path, server_dir):
     except Exception as ex:
         print "Exception raised with name: \n" + str(ex)
 
-def readJSONFromSock(sock, addr):
-    data = ''
-    while True:
-        try:
-            data += sock.recv(BUFFER_SIZE)
-            obj = json.loads(data)
-            break
-        except socket.error as ex:
-            print "Error reading from socket -- connection may have broken."
-            sock.close()
-            return
-        except Exception as ex:
-            print "Partial read from " + str(addr) + " -- have not yet receved full JSON."
-            time.sleep(0.01)
-            continue
-
-    if not data:
-        raise DFSError("No data recieved in readJSONFromSock")
-
-    return obj
-
 
 def upload_to_node(local_file_path, server_file_path, node_address):
 
@@ -249,8 +251,52 @@ def stat(server_file_path):
         sys.exit()
 
 def rm(server_file_path):
-    print "RM " + str(server_file_path)
-    pass
+
+    def deleteFromNode(address, server_file_path):
+        filenodesock = connect_to_node(address)
+        req = FileRequest(FileRequestType.delete, path = server_file_path)
+        filenodesock.send(req.toJson())
+
+    def confirmDeletion(sock):
+        while True:
+            print "Waiting for deletion confirmation from Master..."
+            res = readJSONFromSock(s, 'masternode')
+
+            if 'type' not in res or res['type'] is not ClientRequestType.rm:
+                raise DFSError("Recieved response of incorrect type from Master.")
+
+            if 'success' in res and res['success']:
+                print "File deletion completed with message: " + str(res['output'])
+                sys.exit()
+            else:
+                print "File deletion unsuccessful. Retrying..."
+                addrs = zip(res['address'], res['port'])
+                [deleteFromNode(address, server_file_path) for address in addrs]
+
+    try:
+        req = ClientRequest(ClientRequestType.rm, serverPath = server_file_path, name = '')
+        s = connect_to_master()
+        s.send(req.toJson())
+        res = readJSONFromSock(s, 'mastenode')
+        if 'success' in res and res['success']:
+            addrs = zip(res['address'], res['port'])
+            [deleteFromNode(address, server_file_path) for address in addrs]
+            confirmDeletion(s)
+
+
+        else:
+            output = res['output'] if 'output' in res else None
+            print output
+            raise DFSError("RM failed due to failure response from server with value: " + str(output))
+
+    except Exception as e:
+        print "Error in RM while trying to remove " + str(server_file_path) + " because: "
+        print str(e)
+        print "Aborting..."
+        sys.exit()
+
+
+
 
 def mv(server_path_old, server_path_new):
     print "MV: " + str(server_path_old) + " to " + str(server_path_new)

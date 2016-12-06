@@ -61,7 +61,8 @@ class MasterNode(object):
     def validPath(self, serverPath):
         # TODO: best way to validate path with the directory structure?
         #       ATTN GABE PLZ HALP
-        return True
+        return serverPath in self.reg.data
+
 
     def checkStatusOfNode(self, node, request):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -98,7 +99,7 @@ class MasterNode(object):
                 if data:
                     request = json.loads(data)
                     if 'type' in request:
-                        print request
+                        print "Raw Client Request: \n " + str(request)
                         self.processClientRequest(socket, request, request['type'], viewer)
                     else:
                         raise DFSError("Invalid Client Request")
@@ -326,28 +327,33 @@ class MasterNode(object):
         # find all active nodes with file
         # open sessions for file removal
         # tell client to send remove signals to those files
+        try:
 
-        fullpath = path + '/' + name if path[-1] != '/' and name is not '' else path + name
-        if validPath(fullpath):
+            fullpath = path + name
+            if self.validPath(fullpath):
 
-            nids = self.reg.data[fullpath].nodeIDList
-            nids = [n for n in nids if n in self.reg.activenodes]
-            ips = [self.activenodes[n].address[0] for n in nids]
-            ports = [self.activenodes[n].address[1] for n in nids]
-            session = Session(path = fullpath, type = 'delete', nodeIDs = nids,
-                              clientsocket = socket, dir = self.root.cd(fullpath[1:].split('/')))
-            self.sessions[fullpath] = session
-            res = ClientResponse(ClientRequestType.rm,
-                                 output = 'Delete Request for ' + str(fullpath) + ' received',
-                                 success = True, address = str(ips), port = str(ports))
-        else:
-            res = ClientResponse(ClientRequestType.rm,
-                                 output = 'Error removing ' + str(fullpath) + '. File not found.',
-                                 success = False)
-            print "Remove request failed. File " + str(fullpath) + " not found."
+                nids = self.reg.data[fullpath].nodeIDList
+                nids = [n for n in nids if n in self.reg.activenodes]
+                ips = [self.reg.activenodes[n].address[0] for n in nids]
+                ports = [self.reg.activenodes[n].address[1] for n in nids]
+                session = Session(path = fullpath, type = 'delete', nodeIDs = nids,
+                                  clientsocket = socket, dir = self.root.cd(fullpath[1:].split('/')))
+                self.sessions[fullpath] = session
+                res = ClientResponse(ClientRequestType.rm,
+                                     output = 'Delete Request for ' + str(fullpath) + ' received',
+                                     success = True, address = ips, port = ports)
+                print "Delete request for existing file " + str(fullpath) + \
+                      " recieved. Directing client to delete on nodes " + str(nids)
+            else:
+                res = ClientResponse(ClientRequestType.rm,
+                                     output = 'Error removing ' + str(fullpath) + '. File not found.',
+                                     success = False)
+                print "Remove request failed. File " + str(fullpath) + " not found."
+            socket.send(res.toJson())
 
-        socket.send(res.toJson())
-        socket.close()
+        except Exception as e:
+            raise DFSError(("Exception raised in 'handleFileDeleteRequest: \n" + str(e)))
+
 
 
     def handleDirDeleteRequest(self, socket, path, name):
@@ -357,9 +363,6 @@ class MasterNode(object):
         pass
 
     def handleCopyRequest(self, socket, newpath, oldpath):
-
-        # I didn't want to create a merge conflict, but I think this will work
-        # It just creatively reuses code from the viewer class
         pass
         try:
             command = ['cd', path]
@@ -369,9 +372,6 @@ class MasterNode(object):
                 self.handleViewerRequest(socket, viewer, command)
         except Exception as e:
             raise DFSError("Exception raised in 'handleCopyRequest': \n" + str(ex))
-
-
-
 
     def handleNodeRequest(self, socket, address):
 
@@ -446,78 +446,90 @@ class MasterNode(object):
     def handleNodeUpdate(self, socket, request):
 
         def uploadUpdate(nodeID, path, session):
-            print "Node " + str(nodeID) + " has received " + path + " successfully"
+            try:
+                if path not in self.reg.data:
+                    session.dir.files.add(path.split('/')[-1])
+                    rec = DataRecord(path, [nodeID], checksum)
+                    self.reg.addFile(rec)
+                else:
+                    self.reg.data[path].nodeIDList.append(nodeID)
 
-            if path not in self.reg.data:
-                session.dir.files.add(path.split('/')[-1])
-                rec = DataRecord(path, [nodeID], checksum)
-                self.reg.addFile(rec)
-            else:
-                self.reg.data[path].nodeIDList.append(nodeID)
+                print "Node " + str(nodeID) + " has received " + path + " successfully."
 
-            if session.finished():
-                del self.sessions[path]
-                response = ClientResponse(type = ClientRequestType.upload,
-                                          output = "Upload Success",
-                                          success = True)
-                session.clientsocket.send(response.toJson())
-                session.clientsocket.close()
-                print "All filenodes have received " + path + " -- Disconnecting from client"
-
-        def deleteUpdate(nodeID, path, session):
-            print "Node " + str(nodeID) + " has successfully deleted " + str(path)
-            if path in self.reg.data:
                 if session.finished():
-                    print "Deletion complete!"
-                    rec = self.reg.data.pop(path)
                     del self.sessions[path]
-                    response = ClientResponse(type = ClientRequestType.rm,
-                                              output = "Deletion Success",
+                    response = ClientResponse(type = ClientRequestType.upload,
+                                              output = "Upload Success",
                                               success = True)
                     session.clientsocket.send(response.toJson())
                     session.clientsocket.close()
-                    print "All filenodes have deleted " + path + " -- Disconnecting from client"
-            else:
-                raise DFSError("Deletion update for " + str(path) + \
-                               ", which does not exist on master.")
+                    print "All filenodes have received " + path + "\nDisconnecting from client."
+            except Exception as e:
+                raise DFSError("Exception with name " + str(e) + " raised in handleNodeUpdate/uploadUpdate")
+
+        def deleteUpdate(nodeID, path, session):
+            try:
+                print "Node " + str(nodeID) + " has successfully deleted " + str(path)
+                if path in self.reg.data:
+                    if session.finished():
+                        print "Deletion complete!"
+                        rec = self.reg.data.pop(path)
+                        del self.sessions[path]
+                        response = ClientResponse(type = ClientRequestType.rm,
+                                                  output = "Deletion Success",
+                                                  success = True)
+                        session.clientsocket.send(response.toJson())
+                        session.clientsocket.close()
+                        print "All filenodes have deleted " + path + " -- Disconnecting from client"
+                else:
+                    raise DFSError("Deletion update for " + str(path) + \
+                                   ", which does not exist on master.")
+            except Exception as e:
+                raise DFSError("Exception with name " + str(e) + " raised in handleNodeUpdate/deleteUpdate")
 
         def uploadRetry(nodeID, path, session):
-            print "Node " + str(nodeID) + " failed the checksum for " + path
-            if session.nTriesLeft > 0:
-                node = self.reg.activenodes[nodeID]
-                response = ClientResponse(type = ClientRequestType.upload,
-                                          output = "Retrying Upload...",
-                                          success = False,
-                                          address = node.address[0],
-                                          port = node.address[1])
-                session.nTries = session.nTries - 1
-                session.clientsocket.send(response.toJson())
-            else:
-                print "Upload out of tries."
-                if path in self.reg.data:
-                    print "File " + str(path) + " under replicated."
+            try:
+                print "Node " + str(nodeID) + " failed the checksum for " + path
+                if session.nTriesLeft > 0:
+                    node = self.reg.activenodes[nodeID]
                     response = ClientResponse(type = ClientRequestType.upload,
-                                              output = "Upload soft failure. " + str(path) + " under-replicated.",
-                                              success = True)
+                                              output = "Retrying Upload...",
+                                              success = False,
+                                              address = node.address[0],
+                                              port = node.address[1])
+                    session.nTries = session.nTries - 1
                     session.clientsocket.send(response.toJson())
-                    del self.sessions[path]
                 else:
-                    print "File " + str(path) + " not stored in filesystem."
-                    response = ClientResponse(type = ClientRequestType.upload,
-                                              output = "UPLOAD " + str(path) + "ABORTED.",
-                                              success = True)
-                    session.clientsocket.send(response.toJson())
-                    del self.sessions[path]
+                    print "Upload out of tries."
+                    if path in self.reg.data:
+                        print "File " + str(path) + " under replicated."
+                        response = ClientResponse(type = ClientRequestType.upload,
+                                                  output = "Upload soft failure. " + str(path) + " under-replicated.",
+                                                  success = True)
+                        session.clientsocket.send(response.toJson())
+                        del self.sessions[path]
+                    else:
+                        print "File " + str(path) + " not stored in filesystem."
+                        response = ClientResponse(type = ClientRequestType.upload,
+                                                  output = "UPLOAD " + str(path) + "ABORTED.",
+                                                  success = True)
+                        session.clientsocket.send(response.toJson())
+                        del self.sessions[path]
+            except Exception as e:
+                raise DFSError("Exception with name " + str(e) + " raised in handleNodeUpdate/uploadRetry")
 
         def deleteRetry(nodeID, path, session):
-            print "Node " + str(nodeID) + " failed to delete " + str(path) + "\n File was already deleted."
-            if session.finished():
-                del self.sessions[path]
-                response = ClientResponse(ClientRequestType.rm,
-                                          output = "File deleted: " + str(path),
-                                          success = True)
-            session.clientsocket.send(response.toJson())
-
+            try:
+                print "Node " + str(nodeID) + " failed to delete " + str(path) +\
+                      "\n File was already deleted."
+                if session.finished():
+                    del self.sessions[path]
+                    response = ClientResponse(ClientRequestType.rm,
+                                              output = "File deleted: " + str(path),
+                                              success = True)
+                session.clientsocket.send(response.toJson())
+            except Exception as e:
+                raise DFSError("Exception with name " + str(e) + " raised in handleNodeUpdate/deleteRetry")
 
 
         try:
