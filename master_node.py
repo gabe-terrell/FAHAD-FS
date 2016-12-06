@@ -51,9 +51,13 @@ class MasterNode(object):
             self.runStatusCheck()
 
     def runStatusCheck(self):
-        print "Running status check on filenodes"
+        
+        data = {}
+        for record in self.reg.data.values():
+            data[record.filepath] = record.dataChecksum
+        request = Request(type=ReqType.ping, data=data).toJson()
+        
         target = self.checkStatusOfNode
-        request = Request(type = ReqType.ping, data = None).toJson()
         for node in self.reg.activenodes.values():
             thread = Thread(target=target, args=[node, request])
             thread.start()
@@ -73,7 +77,9 @@ class MasterNode(object):
             sock.send(request)
             res = self.readJSONFromSock(sock, node.address)
             if res['type'] is ResType.ok:
-                print "Node " + str(node.id) + " passed the status check!"
+                diskUsage = res['len']
+                node.diskUsage = diskUsage
+                print "Node " + str(node.id) + " is storing " + str(diskUsage) + " bytes"
         except Exception as ex:
             print "Node " + str(node.id) + " failed to acknowledge the status check!"
             print ex
@@ -196,7 +202,33 @@ class MasterNode(object):
                 print "Disconnecting client."
                 socket.close()
 
-        elif type is ClientRequestType.stat:
+        elif type == ClientRequestType.copy: # 3-way with filenode
+           try:
+               path = request['serverPath']
+               filename = request['name']
+           except Exception as ex:
+               raise DFSError(("Exception raised in 'processClientRequest/copy': \n" + str(ex)))
+
+
+            # # I didn't want to create a merge conflict, but I think this will work
+            # # It just creatively reuses code from the viewer class
+            # try:
+            #     path = request['serverPath']
+            #     dirname = request['name']
+            #     command = ['cd', path]
+            #     output = viewer.process(len(command), command)
+            #     if output != None:
+            #         command = 'mkdir ' + dirname
+            #         self.handleViewerRequest(socket, viewer, command)
+
+        elif type == ClientRequestType.rmdir: # 3-way with filenode if recursive data deletion
+            try:
+                path = request['serverPath']
+                name = request['name']
+            except Exception as ex:
+                raise DFSError(("Exception raised in 'processClientRequest/rmdir': \n" + str(ex)))
+
+        elif type == ClientRequestType.stat:
             try:
                 path = request['serverPath']
                 name = request['name']
@@ -258,6 +290,7 @@ class MasterNode(object):
         if path in self.reg.data:
             record = self.reg.data[path]
             nodesWithFile = list(set(record.nodeIDList) & set(self.reg.activenodes.keys()))
+            print nodesWithFile
             if nodesWithFile:
                 nodeID = nodesWithFile[0]
                 if nodeID in self.reg.activenodes:
@@ -285,9 +318,9 @@ class MasterNode(object):
             if dir:
                 try:
                     tprint("Sending upload ACK to client")
-                    # TODO: implement node balancing to choose nodes to give to client
-                    # TODO: Register session by node ids (node.id)
                     nodes = self.reg.activenodes.values()
+                    nodes.sort(key=lambda n: n.diskUsage, reverse=False)
+                    nodes = nodes[:setup.NODES_PER_FILE]
                     addrs = [node.address[0] for node in nodes]
                     ports = [node.address[1] for node in nodes]
                     response = ClientResponse(type = ClientRequestType.upload,
