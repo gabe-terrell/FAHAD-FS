@@ -254,6 +254,8 @@ def rm(server_file_path):
 
 def mv(server_path_old, server_path_new):
     print "MV: " + str(server_path_old) + " to " + str(server_path_new)
+    # put server_path_old in ServerPath
+    # put server_path_new in name
     pass
 
 def mkdir(server_dir_path, dirname):
@@ -266,6 +268,8 @@ def rmdir(server_dir_path):
 
 def copy(server_path_old, server_path_new):
     print "COPY: " + str(server_path_old) + " to " + str(server_path_new)
+    # put server_path_old in ServerPath
+    # put server_path_new in name
     pass
 
 def main(argc, argv):

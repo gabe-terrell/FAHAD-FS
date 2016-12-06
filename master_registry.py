@@ -84,6 +84,9 @@ class Registry(object):
         self.data[rec.filepath] = rec
         self.saveState()
 
+    def remFile(self, filepath):
+        self.data[rec.filepath].pop()
+        self.saveState()
 
     def addNode(self, nodeID, (ip, port)):
         nr = NodeRec(nodeID, (ip, port))

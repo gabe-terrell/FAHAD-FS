@@ -7,6 +7,7 @@ from filenode_master_protocol import *
 from master_registry import Registry, DataRecord
 from viewer import Viewer
 from error_handling import DFSError
+from session import Session
 
 _, CLIENT_PORT = setup.MASTER_CLIENT_ADDR
 _, NODE_PORT = setup.MASTER_NODE_ADDR
@@ -17,26 +18,6 @@ def tprint(obj):
     print obj
     sys.stdout.flush()
 
-class UploadSession(object):
-
-    def __init__(self, path, checksum, nodeIds, clientsocket, dir):
-        self.path = path
-        self.checksum = checksum
-        self.nodeIds = set(nodeIds)
-        self.clientsocket = clientsocket
-        self.dir = dir
-
-    def verify(self, checksum, nodeId):
-        if nodeId in self.nodeIds:
-            if self.checksum == checksum:
-                self.nodeIds.remove(nodeId)
-            else:
-                return False
-        return True
-
-    def finished(self):
-        return len(self.nodeIds) == 0
-
 class MasterNode(object):
 
     def __init__(self, registryFile = None):
@@ -45,7 +26,7 @@ class MasterNode(object):
         self.reg = Registry(registryFile)
         self.clientServer = ThreadedServer(setup.MASTER_CLIENT_ADDR)
         self.nodeServer = ThreadedServer(setup.MASTER_NODE_ADDR)
-        self.uploadSessions = {}
+        self.sessions = {}
         self.validateRegistry()
 
     def validateRegistry(self):
@@ -77,6 +58,11 @@ class MasterNode(object):
             thread = Thread(target=target, args=[node, request])
             thread.start()
 
+    def validPath(self, serverPath):
+        # TODO: best way to validate path with the directory structure?
+        #       ATTN GABE PLZ HALP
+        return True
+
     def checkStatusOfNode(self, node, request):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(3)
@@ -93,9 +79,9 @@ class MasterNode(object):
             print "Removing Node " + str(node.id) + " from active node list"
             del self.reg.activenodes[node.id]
 
-            for session in self.uploadSessions.values():
-                if node.id in session.nodeIds:
-                    session.nodeIds.remove(node.id)
+            for session in self.sessions.values():
+                if node.id in session.nodeIDs:
+                    session.nodeIDs.remove(node.id)
 
         sock.close()
 
@@ -127,21 +113,21 @@ class MasterNode(object):
 
     def processClientRequest(self, socket, request, type, viewer):
 
-        if type == ClientRequestType.viewer:
+        if type is ClientRequestType.viewer:
             if 'command' in request:
                 command = request['command']
                 self.handleViewerRequest(socket, viewer, command)
             else:
                 raise DFSError(("Exception raised in 'processClientRequest/viewer': \n" + str(ex)))
 
-        elif type == ClientRequestType.download:
+        elif type is ClientRequestType.download:
             try:
                 path = request['serverPath']
                 self.handleDownloadRequest(socket, path)
             except Exception as ex:
                 raise DFSError(("Exception raised in 'processClientRequest/download': \n" + str(ex)))
 
-        elif type == ClientRequestType.upload:
+        elif type is ClientRequestType.upload:
             try:
                 path = request['serverPath']
                 size = request['filesize']
@@ -152,8 +138,7 @@ class MasterNode(object):
                 raise DFSError(("Exception raised in 'processClientRequest/upload': \n" + str(ex)))
 
 
-        elif type == ClientRequestType.rm: # 3-way w/ filenode
-            pass
+        elif type is ClientRequestType.rm: # 3-way w/ filenode
             try:
                 path = request['serverPath']
                 name = request['name']
@@ -161,11 +146,31 @@ class MasterNode(object):
             except Exception as ex:
                 raise DFSError(("Exception raised in 'processClientRequest/rm': \n" + str(ex)))
 
-        elif type == ClientRequestType.mv: # 3-way w/ filenode
-            self.handleMVRequest(socket, newpath, oldpath)
-            pass
+        elif type is ClientRequestType.mv: # 3-way w/ filenode
+            try:
+                oldpath = request['serverPath']
+                newpath = request['name']
+                self.handleMVRequest(socket, newpath, oldpath)
+            except:
+                raise DFSError(("Exception raised in 'processClientRequest/mv': \n" + str(ex)))
 
-        elif type == ClientRequestType.mkdir: # no filenode connection
+        elif type is ClientRequestType.copy:
+            try:
+                oldpath = request['serverPath']
+                newpath = request['name']
+                self.handleCPRequest(socket, newpath, oldpath)
+            except Exception as ex:
+                raise DFSError(("Exception raised in 'processClientRequest/copy': \n" + str(ex)))
+
+        elif type is ClientRequestType.rmdir: # 3-way with filenode if recursive data deletion
+            try:
+                path = request['serverPath']
+                dirname = request['name']
+                handleDirDeleteRequest(socket, path, dirname)
+            except Exception as ex:
+                raise DFSError(("Exception raised in 'processClientRequest/rmdir': \n" + str(ex)))
+
+        elif type is ClientRequestType.mkdir:
             try:
                 path = request['serverPath']
                 dirname = request['name']
@@ -190,33 +195,7 @@ class MasterNode(object):
                 print "Disconnecting client."
                 socket.close()
 
-       elif type == ClientRequestType.copy: # 3-way with filenode
-           try:
-               path = request['serverPath']
-               filename = request['name']
-           except Exception as ex:
-               raise DFSError(("Exception raised in 'processClientRequest/copy': \n" + str(ex)))
-
-
-            # # I didn't want to create a merge conflict, but I think this will work
-            # # It just creatively reuses code from the viewer class
-            # try:
-            #     path = request['serverPath']
-            #     dirname = request['name']
-            #     command = ['cd', path]
-            #     output = viewer.process(len(command), command)
-            #     if output != None:
-            #         command = 'mkdir ' + dirname
-            #         self.handleViewerRequest(socket, viewer, command)
-
-        elif type == ClientRequestType.rmdir: # 3-way with filenode if recursive data deletion
-            try:
-                path = request['serverPath']
-                name = request['name']
-            except Exception as ex:
-                raise DFSError(("Exception raised in 'processClientRequest/rmdir': \n" + str(ex)))
-
-        elif type == ClientRequestType.stat:
+        elif type is ClientRequestType.stat:
             try:
                 path = request['serverPath']
                 name = request['name']
@@ -279,10 +258,17 @@ class MasterNode(object):
             record = self.reg.data[path]
             nodesWithFile = list(set(record.nodeIDList) & set(self.reg.activenodes.keys()))
             if nodesWithFile:
-                nodeId = nodesWithFile[0]
-                node = self.reg.activenodes[nodeId]
+                nodeID = nodesWithFile[0]
+                if nodeID in self.reg.activenodes:
+                    node = self.reg.activenodes[nodeID]
+                else:
+                    node = None
                 return node
         return None
+
+    def nodeSelector(self, reqtype, request):
+        # load balance here
+        pass
 
     def handleUploadRequest(self, socket, path, filesize, filename, checksum):
 
@@ -317,8 +303,10 @@ class MasterNode(object):
 
                     serverFile = path + '/' + filename if path[-1] != '/' else path + filename
                     ids = [node.id for node in nodes]
-                    session = UploadSession(serverFile, checksum, ids, socket, dir)
-                    self.uploadSessions[serverFile] = session
+                    session = Session(path = serverFile, type = 'upload',
+                                            nodeIDs = ids, clientsocket = socket,
+                                            dir = dir, checksum = checksum)
+                    self.sessions[serverFile] = session
 
                     if serverFile in self.reg.data:
                         del self.reg.data[serverFile]
@@ -335,12 +323,55 @@ class MasterNode(object):
             error("Directory must start with '/'")
 
     def handleFileDeleteRequest(self, socket, path, name):
-        pass
+        # find all active nodes with file
+        # open sessions for file removal
+        # tell client to send remove signals to those files
+
+        fullpath = path + '/' + name if path[-1] != '/' and name is not '' else path + name
+        if validPath(fullpath):
+
+            nids = self.reg.data[fullpath].nodeIDList
+            nids = [n for n in nids if n in self.reg.activenodes]
+            ips = [self.activenodes[n].address[0] for n in nids]
+            ports = [self.activenodes[n].address[1] for n in nids]
+            session = Session(path = fullpath, type = 'delete', nodeIDs = nids,
+                              clientsocket = socket, dir = self.root.cd(fullpath[1:].split('/')))
+            self.sessions[fullpath] = session
+            res = ClientResponse(ClientRequestType.rm,
+                                 output = 'Delete Request for ' + str(fullpath) + ' received',
+                                 success = True, address = str(ips), port = str(ports))
+        else:
+            res = ClientResponse(ClientRequestType.rm,
+                                 output = 'Error removing ' + str(fullpath) + '. File not found.',
+                                 success = False)
+            print "Remove request failed. File " + str(fullpath) + " not found."
+
+        socket.send(res.toJson())
+        socket.close()
+
 
     def handleDirDeleteRequest(self, socket, path, name):
         pass
-        # recursively delete files in the directory we are removing, which will
-        # call handleFileDeleteRequest
+
+    def handleMVRequest(self, socket, newpath, oldpath):
+        pass
+
+    def handleCopyRequest(self, socket, newpath, oldpath):
+
+        # I didn't want to create a merge conflict, but I think this will work
+        # It just creatively reuses code from the viewer class
+        pass
+        try:
+            command = ['cd', path]
+            output = viewer.process(len(command), command)
+            if output != None:
+                command = 'mkdir ' + dirname
+                self.handleViewerRequest(socket, viewer, command)
+        except Exception as e:
+            raise DFSError("Exception raised in 'handleCopyRequest': \n" + str(ex))
+
+
+
 
     def handleNodeRequest(self, socket, address):
 
@@ -413,49 +444,109 @@ class MasterNode(object):
 
 
     def handleNodeUpdate(self, socket, request):
-        print "Received a node update message"
-        try:
-            nodeId = request['data']
-            path = request['path']
-            checksum = request['chksum']
 
-            session = self.uploadSessions[path]
-            if session.verify(checksum, nodeId):
-                print "Node " + str(nodeId) + " has received " + path + " successfully"
-                
-                if path not in self.reg.data:
-                    session.dir.files.add(path.split('/')[-1])
-                    rec = DataRecord(path, [nodeId], checksum)
-                    self.reg.addFile(rec)
+        def uploadUpdate(nodeID, path, session):
+            print "Node " + str(nodeID) + " has received " + path + " successfully"
 
-                else:
-                    self.reg.data[path].nodeIDList.append(nodeId)
+            if path not in self.reg.data:
+                session.dir.files.add(path.split('/')[-1])
+                rec = DataRecord(path, [nodeID], checksum)
+                self.reg.addFile(rec)
+            else:
+                self.reg.data[path].nodeIDList.append(nodeID)
 
+            if session.finished():
+                del self.sessions[path]
+                response = ClientResponse(type = ClientRequestType.upload,
+                                          output = "Upload Success",
+                                          success = True)
+                session.clientsocket.send(response.toJson())
+                session.clientsocket.close()
+                print "All filenodes have received " + path + " -- Disconnecting from client"
+
+        def deleteUpdate(nodeID, path, session):
+            print "Node " + str(nodeID) + " has successfully deleted " + str(path)
+            if path in self.reg.data:
                 if session.finished():
-                    del self.uploadSessions[path]
-                    response = ClientResponse(type = ClientRequestType.upload,
-                                              output = "Upload Success",
+                    print "Deletion complete!"
+                    rec = self.reg.data.pop(path)
+                    del self.sessions[path]
+                    response = ClientResponse(type = ClientRequestType.rm,
+                                              output = "Deletion Success",
                                               success = True)
                     session.clientsocket.send(response.toJson())
                     session.clientsocket.close()
-                    # send verification response to filenode
-                    # socket.send(Response(ResType.ok).toJson())
-                    print "All filenodes have received " + path + " -- Disconnecting from client"
+                    print "All filenodes have deleted " + path + " -- Disconnecting from client"
             else:
-                print "Node " + str(nodeId) + " failed the checksum for " + path + " -- Requesting resend"
-                node = self.reg.activenodes[nodeId]
+                raise DFSError("Deletion update for " + str(path) + \
+                               ", which does not exist on master.")
+
+        def uploadRetry(nodeID, path, session):
+            print "Node " + str(nodeID) + " failed the checksum for " + path
+            if session.nTriesLeft > 0:
+                node = self.reg.activenodes[nodeID]
                 response = ClientResponse(type = ClientRequestType.upload,
                                           output = "Retrying Upload...",
                                           success = False,
                                           address = node.address[0],
                                           port = node.address[1])
+                session.nTries = session.nTries - 1
                 session.clientsocket.send(response.toJson())
+            else:
+                print "Upload out of tries."
+                if path in self.reg.data:
+                    print "File " + str(path) + " under replicated."
+                    response = ClientResponse(type = ClientRequestType.upload,
+                                              output = "Upload soft failure. " + str(path) + " under-replicated.",
+                                              success = True)
+                    session.clientsocket.send(response.toJson())
+                    del self.sessions[path]
+                else:
+                    print "File " + str(path) + " not stored in filesystem."
+                    response = ClientResponse(type = ClientRequestType.upload,
+                                              output = "UPLOAD " + str(path) + "ABORTED.",
+                                              success = True)
+                    session.clientsocket.send(response.toJson())
+                    del self.sessions[path]
+
+        def deleteRetry(nodeID, path, session):
+            print "Node " + str(nodeID) + " failed to delete " + str(path) + "\n File was already deleted."
+            if session.finished():
+                del self.sessions[path]
+                response = ClientResponse(ClientRequestType.rm,
+                                          output = "File deleted: " + str(path),
+                                          success = True)
+            session.clientsocket.send(response.toJson())
+
+
+
+        try:
+            nodeID = request['data']
+            path = request['path']
+            checksum = request['chksum']
+
+            if path in self.sessions:
+                session = self.sessions[path]
+            else:
+                session = None
+                raise DFSError("Got Node Update for file that is not in session.")
+
+            if session.verify(checksum, nodeID):
+                if session.type is 'upload':
+                    uploadUpdate(nodeID, path, session)
+                elif session.type is 'delete':
+                    deleteUpdate(nodeID, path, session)
+            elif session.type is 'upload':
+                uploadRetry(nodeID, path, session)
+            elif session.type is 'delete':
+                deleteRetry(nodeID, path, session)
 
         except Exception, ex:
             print "An exception in 'handleNodeUpdate' with name \n" + str(ex) + \
                   "\n was raised. Sending shutdown signal to filenode."
             socket.close()
-            #self.killNode(nodeId)
+        socket.close()
+            #self.killNode(nodeID)
 
 
     # initiate a connection to filenode by id
@@ -481,7 +572,7 @@ class MasterNode(object):
                 time.sleep(0.01)
                 continue
 
-        if not data: 
+        if not data:
             raise DFSError("No data recieved in readJSONFromSock")
 
         return obj
