@@ -14,12 +14,18 @@ from threaded_server import ThreadedServer
 from error_handling import DFSError
 
 
-NODE_FILEPATH = str(setup.HOMEDIR) + "/nodefiles/"
+NODE_FILEPATH = str(setup.HOMEDIR) + "nodefiles/"
 RAWFILE_EXT   = ".bin"
 META_EXT      = ".meta"
 DATA_ENCODING = 'utf-8'
 NODESERVER_ADDR, NODESERVER_PORT  = setup.FILE_NODE_ADDR
 
+class SessionLog(object):
+
+    def __init__(self, type, size):
+        self.time = time.time()
+        self.type = type
+        self.size = size
 
 class FileNode:
 
@@ -41,6 +47,7 @@ class FileNode:
 
         self.nodeID = None
         self.dirpath = None
+        self.log = []
         self.wakeup() # sets nodeid, gives server address, checks directory integrity
 
 
@@ -68,8 +75,7 @@ class FileNode:
             clientsocket.connect(setup.MASTER_NODE_ADDR)
             clientsocket.send(request)
             print "ID REQUEST: " + request
-            response = clientsocket.recv(setup.BUFSIZE)
-            response = json.loads(response)
+            response = self.readJSONFromSock(clientsocket, setup.MASTER_NODE_ADDR)
 
             if not 'type' in response:
                 raise error("Master sent bad response.")
@@ -204,6 +210,9 @@ class FileNode:
 
             print "Done writing file " + str(path) + " to disk..."
 
+            # Log new file download
+            self.log.insert(0, SessionLog('upload', nBytesExpected))
+
             # send a hash of the new file to the server to confirm integrity
             request = Request(ReqType.n2m_update,
                               data = self.nodeID,
@@ -276,6 +285,8 @@ class FileNode:
                 else:
                     raise DFSError("Did not receive ack from client")
 
+                self.log.insert(0, SessionLog('download', size))
+
                 print "Sending data to client"
                 while True:
                     data = file.read(setup.BUFSIZE)
@@ -307,10 +318,87 @@ class FileNode:
         # if the kill signal isn't from the master, don't listen
         pass
 
+    def fetchFiles(self):
+        return [f[:-5] for f in os.listdir(self.dirpath) if f[-5:] == '.meta']
+
+    def fetchFilename(self, filename, ext):
+        path = self.dirpath + '/' + filename + ext
+        return path
+
+    def fetchMetadata(self, filename):
+        path = self.fetchFilename(filename, '.meta')
+        try:
+            with open(path, 'r') as file:
+                data = file.read(setup.BUFSIZE).replace("'", '"')
+                return json.loads(data)
+        except Exception as ex:
+            print "Error in fetchMetadata: " + str(ex)
+            return None
+
+    def fetchSize(self, filename):
+        bin = self.fetchFilename(filename, '.bin')
+        return os.path.getsize(bin)
+
+    def fetchSizeOnDisk(self):
+        size = 0
+        for file in self.fetchFiles():
+            size += self.fetchSize(file)
+        return size
+
+    def removeFile(self, filename):
+        bin = self.fetchFilename(filename, '.bin')
+        meta = self.fetchFilename(filename, '.meta')
+        os.remove(bin)
+        os.remove(meta)
+
+    def validateData(self, checksums, metadata):
+        errors = []
+        for file in checksums:
+            metaname = self.hashForPath(file)
+            if metaname in metadata:
+                checksum = self.fetchMetadata(metaname)['checksum']
+                if checksums[file] == checksum:
+                    #print file + " validated"
+                    pass
+                else:
+                    #print file + " failed"
+                    pass
+                    errors.append(metaname)
+                metadata.remove(metaname)
+        errors.extend(metadata)
+        return errors
+
+
+    def fetchActivitySince(self, seconds):
+        bound = time.time() - seconds
+        activity = []
+        for log in self.log:
+            if log.time > bound:
+                activity.append(log)
+            else:
+                return activity
+
     def handleStatusCheck(self, socket, address, request):
         print "Received status check from master!"
-        res = Response(ResType.ok)
+        
+        activity = self.fetchActivitySince(10)
+        if activity:
+            data = []
+            for a in activity:
+                data.append({'type': a.type, 'size': a.size})
+        else:
+            data = None
+            print "No activity"
+
+        res = Response(ResType.ok, data=data, length=self.fetchSizeOnDisk())
         socket.send(res.toJson())
+
+        data = request['data']
+        errors = self.validateData(data, set(self.fetchFiles()))
+        if errors:
+            "Deleting " + str(len(errors)) + " obsolete files"
+            for file in errors:
+                self.removeFile(file)
 
 def usage_error():
     print "Usage: python file_node.py -test"
