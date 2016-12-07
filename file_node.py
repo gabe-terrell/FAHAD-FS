@@ -48,6 +48,7 @@ class FileNode:
         self.nodeID = None
         self.dirpath = None
         self.log = []
+        self.mode = mode
         self.wakeup() # sets nodeid, gives server address, checks directory integrity
 
 
@@ -65,7 +66,10 @@ class FileNode:
     def wakeup(self):
 
         dirs = os.walk(NODE_FILEPATH).next()[1] # list of directories
-        ids = [int(re.findall('\d+', d).pop()) for d in dirs]
+        if self.mode == 'fresh':
+            ids = []
+        else:
+            ids = [int(re.findall('\d+', d).pop()) for d in dirs]
         data = {'ids': ids, 'port': self.server.port}
         request = Request(ReqType.n2m_wakeup, data).toJson()
         clientsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -448,6 +452,8 @@ def main(argc, argv):
 
     if flag == "-test":
         fnode = FileNode(mode = 'test')
+    elif flag == "-fresh":
+        fnode = FileNode(mode = 'fresh')
     else:
         fnode = FileNode()
 
