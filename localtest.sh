@@ -5,6 +5,7 @@
 # rm ./registrydata/reg.data
 
 INITIAL_NODES=10
+INITIAL_FILES=10
 NUMBER_ROUNDS=5
 MAX_ADDITIONS=5
 MAX_UPLOADS=10
@@ -97,8 +98,7 @@ function seedInput {
 	echo $FILEPATH
 }
 
-# Grab a random file inside of input directory
-function randomInput {
+function numInputFiles {
 	FILES="$(ls $INPUT_DIR)"
 
 	COUNT=0
@@ -106,6 +106,15 @@ function randomInput {
 	do
 		((COUNT++))
 	done
+
+	echo $COUNT
+}
+
+# Grab a random file inside of input directory
+function randomInput {
+	FILES="$(ls $INPUT_DIR)"
+
+	COUNT="$(numInputFiles)"
 
 	NUM=$(($RANDOM % $COUNT))
 	WINNER=""
@@ -179,14 +188,23 @@ function simulate {
 
 ###########################################################################
 
-# test run the viewer
-seedInput
+# Create directories if they don't already exist
+mkdir -p $INPUT_DIR
+mkdir -p $OUTPUT_DIR
 
+# Seed input if not enough already
+while [ "$(numInputFiles)" -lt "$INITIAL_FILES" ]; do
+	seedInput &> /dev/null &
+done
+
+# Connect a client instance to verify master server running
 printf "Verifying master by connecting viewer\n\n"
 cat $VIEWER_INSTRS | python $CLIENT -v
 
+# Spawn initial batch of nodes
 spawnNodes $INITIAL_NODES
 
+# Run n simulations
 for ROUND in `seq 1 $NUMBER_ROUNDS`;
 do
 	echo "Simulating round $ROUND"
@@ -195,14 +213,3 @@ done
 
 printf "End of simulation. Running viewer instance.\n\n"
 cat $VIEWER_INSTRS | python $CLIENT -v 
-
-while [ "$(nodeCount)" -gt "1" ]; do
-	nodeRoulette
-	sleep 1
-done
-
-#nodeRoulette
-
-# do a couple uploads
-# do a couple downloads to check integrity
-# run through commands

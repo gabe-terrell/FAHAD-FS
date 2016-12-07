@@ -1,6 +1,8 @@
 *.pyc
 *.dir
 *.data
+**/input/*
+**/output/*
 **/setup.py
 **/nodefiles/*
 **/registrydata/*
