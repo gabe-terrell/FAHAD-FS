@@ -30,32 +30,36 @@ Three main components:
 - [X] File storage on file nodes
 - [X] Support for simultaneous clients (multithreaded master node and file nodes)
     - [X] Multiple client access to filesystem
-    - [ ] Safe concurrent accessing (to avoid simultaneous accesses on the same resource)
+    - [X] Safe concurrent accessing (to avoid simultaneous accesses on the same resource)
+        - uses "session-based" architecture to open a "session" with a particular file such that a second client cannot access a file while it is already "in session"
 - [X] Multiple filenodes on same host machine (Helpful for testing, unlikely in "production")
 - [X] Miscellaneous filesystem operations:
-    - [X] STAT: ```python client.py --stat 'path_on_server'```
-    - [X] MKDIR: ...
+    - [X] STAT: ```python client.py --stat <path_on_server>```
+    - [X] MKDIR: ```python client.py --mkdir <path_on_server>```
+    - [X] RM: ```python client.py --rm <path_on_server>```
     - [ ] CP: unimplemented
     - [ ] RMDIR: unimplemented
-    - [ ] MV: to-implement
-    - [ ] RM: to-implement
-- [ ] __File upload direct from client to filenode__
+    - [ ] MV: unimplemented
+
+- [X] __File upload direct from client to filenode__
     - [X] server handshake with location passing
     - [X] transmission from client to filenode and storage on filenode local filesystem
     - [X] 3-way transmission integrity check between filenode, master, client
-- [ ] __File download direct from filenode to client__-- high priority
-    - [ ] server handshake with location passing
-    - [ ] transmission from filenode to client
-    - [ ] 3-way transmission integrity check between filenode, master, client
+- [X] __File download direct from filenode to client__
+    - [X] server handshake with location passing
+    - [X] transmission from filenode to client
+    - [X] 3-way transmission integrity check between filenode, master, client
 - [X] File replication across multiple file nodes
-    - [X] filesystem mirrors all files across all active nodes
-    - [ ] load balancing for selection of file nodes to receive data
-        - load balancing for size: each file node has an equal amount of data
-        - load balancing to manage bandwidth to each node: keep filenodes from getting choked
-    - [ ] redistribution of files to fresh nodes upon entry to the network (directed by master)
-    - [ ] re-replication of files to new nodes under occurrence of file node failure
-- [ ] File Node sends 'still-alive' pings to master so master can track 'active' nodes
-- [ ] Client: splitting of large files across multiple file nodes
+    - [X] filesystem replicates files using replication factor (k = 3)
+
+- [X] load balancing for selection of file nodes to receive data
+    - [X] load balancing for size: file nodes with minimum data receive priority
+    - [X] load balancing to manage bandwidth to each node: keep filenodes from getting choked
+- [ ] Dynamic file redistribution
+    - [ ] Redistribution of files to fresh nodes upon entry to the network (directed by master)
+    - [ ] Replication of files to new nodes under occurrence of file node failure
+- [X] File Node sends 'still-alive' pings to master so master can track 'active' nodes
+- [ ] Client: splitting of large files across multiple file nodes in 'chunks'
 - [ ] Client: caching of recently accessed files at host machine
     - Set TTL to determine how long file can be cached
-    - update of cached file spurs new update of file on network
+    - Update of cached file spurs new update of file on network

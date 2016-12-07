@@ -93,14 +93,14 @@ function seedInput {
 		printf "$SEED_DATA" >> $FILEPATH
 		((SEED_AMOUNT--))
 	done
-	
+
 	echo $FILEPATH
 }
 
 # Grab a random file inside of input directory
 function randomInput {
 	FILES="$(ls $INPUT_DIR)"
-	
+
 	COUNT=0
 	for FILE in $FILES
 	do
@@ -125,7 +125,7 @@ function randomInput {
 # Either create a new file or grab an exisiting one
 # Weighted to use an exisiting file 90% of the time
 function randomInputAction {
-	if [ "$(($RANDOM % 10))" -eq "0" ]; 
+	if [ "$(($RANDOM % 10))" -eq "0" ];
 	then
 		echo "$(seedInput)"
 	else
@@ -149,7 +149,7 @@ function simulate {
 		CONT=false
 
 		nodeRoulette &> /dev/null &
-		
+
 		if [ "$NODE_ADDITIONS" -gt "0" ]; then
 			((NODE_ADDITIONS--))
 			CONT=true
@@ -183,7 +183,7 @@ function simulate {
 seedInput
 
 printf "Verifying master by connecting viewer\n\n"
-cat $VIEWER_INSTRS | python $CLIENT -v 
+cat $VIEWER_INSTRS | python $CLIENT -v
 
 spawnNodes $INITIAL_NODES
 
