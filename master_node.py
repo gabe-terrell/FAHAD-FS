@@ -51,12 +51,12 @@ class MasterNode(object):
             self.runStatusCheck()
 
     def runStatusCheck(self):
-        
+
         data = {}
         for record in self.reg.data.values():
             data[record.filepath] = record.dataChecksum
         request = Request(type=ReqType.ping, data=data).toJson()
-        
+
         target = self.checkStatusOfNode
         for node in self.reg.activenodes.values():
             thread = Thread(target=target, args=[node, request])
@@ -566,9 +566,13 @@ class MasterNode(object):
 
 
         try:
+            if 'data' not in request or 'path' not in request or 'chksum' not in request or 'status' not in request:
+               raise DFSError("Bad update from filenode sent to Master.")
+
             nodeID = request['data']
             path = request['path']
             checksum = request['chksum']
+            status   = request['status']
 
             if path in self.sessions:
                 session = self.sessions[path]
@@ -576,7 +580,7 @@ class MasterNode(object):
                 session = None
                 raise DFSError("Got Node Update for file that is not in session.")
 
-            if session.verify(checksum, nodeID):
+            if status and session.verify(checksum, nodeID):
                 if session.type is 'upload':
                     uploadUpdate(nodeID, path, session)
                 elif session.type is 'delete':
@@ -589,7 +593,6 @@ class MasterNode(object):
         except Exception, ex:
             print "An exception in 'handleNodeUpdate' with name \n" + str(ex) + \
                   "\n was raised. Sending shutdown signal to filenode."
-            socket.close()
         socket.close()
             #self.killNode(nodeID)
 

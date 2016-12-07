@@ -25,12 +25,13 @@ class ResType(object):
 
 class Request(JsonObject):
 
-    def __init__(self, type, data = None, length = None, path = None, chksum = None):
+    def __init__(self, type, data = None, length = None, path = None, chksum = None, status = None):
         self.type = type
         self.data = data
         self.len  = length
         self.path = path
         self.chksum = chksum
+        self.status = status
 
 class Response(JsonObject):
 

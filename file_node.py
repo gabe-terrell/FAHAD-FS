@@ -189,8 +189,6 @@ class FileNode:
             # read in the file
             nRecvd = 0
             h = hashlib.md5()
-
-
             with io.open(chunkFilename, 'wb') as cFile:
 
                 while nRecvd < nBytesExpected:
@@ -217,11 +215,11 @@ class FileNode:
             request = Request(ReqType.n2m_update,
                               data = self.nodeID,
                               path = path,
+                              status = True,
                               chksum = dataChecksum).toJson()
 
             # wait for verification response
             mastersock = self.reqToMaster(request)
-            # res = self.readJSONFromSock(mastersock, setup.MASTER_NODE_ADDR)
             mastersock.close()
 
             clientSocket.close()
@@ -230,6 +228,19 @@ class FileNode:
             print "An exception in 'handleFileStore' with name \n" + str(ex) + \
                   "\n was raised. Closing socket...\n"
             clientSocket.close()
+            try:
+                request = Request(ReqType.n2m_update,
+                                  data = self.nodeID,
+                                  path = path,
+                                  status = False,
+                                  chksum = dataChecksum).toJson()
+
+                # wait for verification response
+                mastersock = self.reqToMaster(request)
+                mastersock.close()
+            except Exception as ex:
+                raise DFSError("Error sending failure update to master in " + \
+                               "handleFileStore")
 
     def reqToMaster(self, request):
         try:
@@ -302,9 +313,33 @@ class FileNode:
         socket.close()
 
     def handleFileDelete(self, socket, address, request):
-        # delete the file
-        # confirm with masternode
-        pass
+        print "FILE DELETE: " + str(request)
+        try:
+            if 'path' in request:
+                path = request['path']
+                hashpath = self.hashForPath(path)
+                socket.close()
+                if (os.path.isfile(NODE_FILEPATH + hashpath + RAWFILE_EXT) and
+                   os.path.isfile(NODE_FILEPATH + hashpath + META_EXT)):
+
+                    os.remove(NODE_FILEPATH + hashpath + RAWFILE_EXT)
+                    os.remove(NODE_FILEPATH + hashpath + META_EXT)
+                    req = Request(ReqType.n2m_update, data = self.nodeID,
+                                  path = path, status = True)
+                else:
+                    req = Request(ReqType.n2m_update, data = self.nodeID,
+                                  path = path, status = False)
+                msock = self.reqToMaster(req.toJson())
+                msock.close()
+
+
+            else:
+                print "Request to delete sent with malformed request."
+                print "Closing socket."
+
+        except Exception as ex:
+            raise DFSError("Error in 'handleFileDelete'" + " with value " + str(ex))
+        socket.close()
 
     def handleFileCopy(self, socket, address, request):
         # copy the file to some new location (could even be self)
@@ -380,7 +415,7 @@ class FileNode:
 
     def handleStatusCheck(self, socket, address, request):
         print "Received status check from master!"
-        
+
         activity = self.fetchActivitySince(10)
         if activity:
             data = []
