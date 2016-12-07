@@ -12,7 +12,7 @@ from session import Session
 _, CLIENT_PORT = setup.MASTER_CLIENT_ADDR
 _, NODE_PORT = setup.MASTER_NODE_ADDR
 
-PING_INTERVAL = 5 # seconds
+PING_INTERVAL = 3 # seconds
 
 def tprint(obj):
     print obj
@@ -161,14 +161,6 @@ class MasterNode(object):
             except:
                 raise DFSError(("Exception raised in 'processClientRequest/mv': \n" + str(ex)))
 
-        elif type is ClientRequestType.copy:
-            try:
-                oldpath = request['serverPath']
-                newpath = request['name']
-                self.handleCPRequest(socket, newpath, oldpath)
-            except Exception as ex:
-                raise DFSError(("Exception raised in 'processClientRequest/copy': \n" + str(ex)))
-
         elif type is ClientRequestType.rmdir: # 3-way with filenode if recursive data deletion
             try:
                 path = request['serverPath']
@@ -202,13 +194,12 @@ class MasterNode(object):
                 print "Disconnecting client."
                 socket.close()
 
-        elif type == ClientRequestType.copy: # 3-way with filenode
+        elif type == ClientRequestType.cp: # 3-way with filenode
            try:
                path = request['serverPath']
                filename = request['name']
            except Exception as ex:
-               raise DFSError(("Exception raised in 'processClientRequest/copy': \n" + str(ex)))
-
+               raise DFSError(("Exception raised in 'processClientRequest/cp': \n" + str(ex)))
 
             # # I didn't want to create a merge conflict, but I think this will work
             # # It just creatively reuses code from the viewer class
@@ -252,36 +243,47 @@ class MasterNode(object):
 
 
     def handleViewerRequest(self, socket, viewer, command):
-        tprint("Viewer Request: " + command)
-        if command == 'init':
-            output = 'OK'
-        else:
-            argv = command.split()
-            output = viewer.process(len(argv), argv)
-        if output and output[0] == '#':
-            arg = argv[0]
-            if arg == 'mkdir':
-                path = output[1:]
-                rec = DataRecord(path, [], '')
-                self.reg.addFile(rec)
-            output = ''
-        response = ClientResponse(ClientRequestType.viewer, output, output != None)
-        socket.send(response.toJson())
+        try:
+            tprint("Viewer Request: " + command)
+            if command == 'init':
+                output = 'OK'
+            else:
+                argv = command.split()
+                output = viewer.process(len(argv), argv)
+            if output and output[0] == '#':
+                arg = argv[0]
+                if arg == 'mkdir':
+                    path = output[1:]
+                    rec = DataRecord(path, [], '')
+                    self.reg.addFile(rec)
+                output = ''
+            response = ClientResponse(ClientRequestType.viewer, output, output != None)
+            socket.send(response.toJson())
+        except Exception as e:
+            print "Exception rasied in 'handleViewerRequest' with name \n" + str(e)
+            print "Closing socket."
+            socket.close()
 
 
     def handleDownloadRequest(self, socket, path):
-        node = self.findNodeWithFile(path)
-        if node:
-            response = ClientResponse(type = ClientRequestType.download,
-                                      output = "Initiating Download...",
-                                      success = True,
-                                      address = node.address[0],
-                                      port = node.address[1])
-        else:
-            response = ClientResponse(type = ClientRequestType.download,
-                                      output = "File not found",
-                                      success = False)
-        socket.send(response.toJson())
+        try:
+            self.waitForSessionClose(path)
+            node = self.findNodeWithFile(path)
+            if node:
+                response = ClientResponse(type = ClientRequestType.download,
+                                          output = "Initiating Download...",
+                                          success = True,
+                                          address = node.address[0],
+                                          port = node.address[1])
+            else:
+                response = ClientResponse(type = ClientRequestType.download,
+                                          output = "File not found",
+                                          success = False)
+            socket.send(response.toJson())
+        except Exception as e:
+            print "Exception rasied in 'handleDownloadRequest' with name \n" + str(e)
+            print "Closing socket."
+            socket.close()
 
 
     # TODO: Right now, this naively looks until it finds a node that owns the file
@@ -300,9 +302,16 @@ class MasterNode(object):
                 return node
         return None
 
-    def nodeSelector(self, reqtype, request):
-        # load balance here
-        pass
+    # def nodeSelector(self, reqtype, request):
+    #     # load balance here
+    #     pass
+
+    def waitForSessionClose(self, session):
+        delay = 0.001
+        delayInc = 0.01
+        while session in self.sessions.values():
+            time.sleep(delay)
+            delay = delay + delayInc
 
     def handleUploadRequest(self, socket, path, filesize, filename, checksum):
 
@@ -332,15 +341,15 @@ class MasterNode(object):
                     tprint("Sending upload info to client for the following nodes:")
                     for node in nodes:
                         print node.address
-                    socket.send(response.toJson())
-                    tprint("Upload info sent to client.")
-
                     serverFile = path + '/' + filename if path[-1] != '/' else path + filename
+                    self.waitForSessionClose(serverFile) # to avoid session overlap
                     ids = [node.id for node in nodes]
                     session = Session(path = serverFile, type = 'upload',
-                                            nodeIDs = ids, clientsocket = socket,
-                                            dir = dir, checksum = checksum)
+                                             nodeIDs = ids, clientsocket = socket,
+                                             dir = dir, checksum = checksum)
                     self.sessions[serverFile] = session
+                    socket.send(response.toJson())
+                    tprint("Upload info sent to client.")
 
                     if serverFile in self.reg.data:
                         del self.reg.data[serverFile]
@@ -369,6 +378,7 @@ class MasterNode(object):
                 nids = [n for n in nids if n in self.reg.activenodes]
                 ips = [self.reg.activenodes[n].address[0] for n in nids]
                 ports = [self.reg.activenodes[n].address[1] for n in nids]
+                self.waitForSessionClose(fullpath)
                 session = Session(path = fullpath, type = 'delete', nodeIDs = nids,
                                   clientsocket = socket, dir = self.root.cd(fullpath[1:].split('/')))
                 self.sessions[fullpath] = session
@@ -436,7 +446,7 @@ class MasterNode(object):
                     print "Client lagging or disconnected."
             except Exception, ex:
                 print "An exception with name \n" + str(ex) + \
-                      "\n was raised. Closing socket...\n"
+                      "\n was raised in 'handleNodeRequest'. Closing socket...\n"
                 socket.close()
                 break
 
@@ -450,7 +460,6 @@ class MasterNode(object):
             node_listening_port = data['port']
 
             eligible_nodes = list(set(query_nodes) - set(self.reg.activenodes.keys()))
-
             if not eligible_nodes:
 
                 nodeID = self.reg.nodeIDmax + 1
@@ -458,11 +467,9 @@ class MasterNode(object):
                 print "Initializing node with new ID " + str(nodeID) + " and adding to registry."
 
             else:
-
                 nodeID = eligible_nodes[0]
                 print "Recieved wakeup signal from preexisting file node with ID " + str(nodeID) + "."
                 print "Adding " + str(nodeID) + " to registry."
-
 
             res = Response(ResType.m2n_wakeres, nodeID)
             socket.send(res.toJson())
@@ -471,7 +478,7 @@ class MasterNode(object):
 
         except Exception, ex:
             print "An exception with name \n" + str(ex) + \
-                  "\n was raised. Sending shutdown signal to filenode."
+                  "\n was raised in 'handleNodeWakeup'. Sending shutdown signal to filenode."
             socket.close()
             self.killNode(nodeID)
 
@@ -490,13 +497,14 @@ class MasterNode(object):
                 print "Node " + str(nodeID) + " has received " + path + " successfully."
 
                 if session.finished():
-                    del self.sessions[path]
+                    print "All filenodes have received " + path + "\nDisconnecting from client."
                     response = ClientResponse(type = ClientRequestType.upload,
                                               output = "Upload Success",
                                               success = True)
                     session.clientsocket.send(response.toJson())
                     session.clientsocket.close()
-                    print "All filenodes have received " + path + "\nDisconnecting from client."
+                    if path in self.sessions:
+                        del self.sessions[path]
             except Exception as e:
                 raise DFSError("Exception with name " + str(e) + " raised in handleNodeUpdate/uploadUpdate")
 
@@ -507,7 +515,8 @@ class MasterNode(object):
                     if session.finished():
                         print "Deletion complete!"
                         rec = self.reg.data.pop(path)
-                        del self.sessions[path]
+                        if path in self.sessions:
+                            del self.sessions[path]
                         response = ClientResponse(type = ClientRequestType.rm,
                                                   output = "Deletion Success",
                                                   success = True)
@@ -540,14 +549,14 @@ class MasterNode(object):
                                                   output = "Upload soft failure. " + str(path) + " under-replicated.",
                                                   success = True)
                         session.clientsocket.send(response.toJson())
-                        del self.sessions[path]
                     else:
                         print "File " + str(path) + " not stored in filesystem."
                         response = ClientResponse(type = ClientRequestType.upload,
                                                   output = "UPLOAD " + str(path) + "ABORTED.",
                                                   success = True)
                         session.clientsocket.send(response.toJson())
-                        del self.sessions[path]
+                    del self.sessions[path]
+
             except Exception as e:
                 raise DFSError("Exception with name " + str(e) + " raised in handleNodeUpdate/uploadRetry")
 
@@ -560,7 +569,8 @@ class MasterNode(object):
                     response = ClientResponse(ClientRequestType.rm,
                                               output = "File deleted: " + str(path),
                                               success = True)
-                session.clientsocket.send(response.toJson())
+                    session.clientsocket.send(response.toJson())
+
             except Exception as e:
                 raise DFSError("Exception with name " + str(e) + " raised in handleNodeUpdate/deleteRetry")
 
@@ -580,7 +590,13 @@ class MasterNode(object):
                 session = None
                 raise DFSError("Got Node Update for file that is not in session.")
 
+            # mutex
+            while session.locked:
+                time.sleep(0.05)
+            session.lock()
+
             if status and session.verify(checksum, nodeID):
+                session.nodeIDs.remove(nodeID)
                 if session.type is 'upload':
                     uploadUpdate(nodeID, path, session)
                 elif session.type is 'delete':
@@ -589,6 +605,8 @@ class MasterNode(object):
                 uploadRetry(nodeID, path, session)
             elif session.type is 'delete':
                 deleteRetry(nodeID, path, session)
+
+            session.unlock()
 
         except Exception, ex:
             print "An exception in 'handleNodeUpdate' with name \n" + str(ex) + \
@@ -627,7 +645,7 @@ class MasterNode(object):
 
     def killNode(self, nid):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(self.rec.activenodes[nid].address)
+        sock.connect(self.reg.activenodes[nid].address)
         sock.send(Response(ResType.m2n_kill).toJson())
         sock.close()
 

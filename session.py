@@ -8,14 +8,21 @@ class Session(object):
         self.clientsocket = clientsocket
         self.dir = dir
         self.nTriesLeft = 3 # number of tries we get to accomplish session goal
+        self.locked = False
 
     def verify(self, checksum, nodeId):
+        valid = False
         if nodeId in self.nodeIDs:
             if self.checksum == checksum or self.checksum is None:
-                self.nodeIDs.remove(nodeId)
-            else:
-                return False
-        return True
+                valid = True
+
+        return valid
 
     def finished(self):
         return len(self.nodeIDs) == 0
+
+    def lock(self):
+        self.locked = True
+
+    def unlock(self):
+        self.locked = False

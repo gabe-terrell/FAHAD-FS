@@ -32,7 +32,7 @@ class FileNode:
     def __init__(self, masterAddr = NODESERVER_ADDR, serverPort = NODESERVER_PORT, mode = None):
 
         port = NODESERVER_PORT
-
+        
         for i in range(1, setup.N_COPIES):
             try:
                 self.server = ThreadedServer((NODESERVER_ADDR, port),
@@ -319,14 +319,17 @@ class FileNode:
                 path = request['path']
                 hashpath = self.hashForPath(path)
                 socket.close()
-                if (os.path.isfile(NODE_FILEPATH + hashpath + RAWFILE_EXT) and
-                   os.path.isfile(NODE_FILEPATH + hashpath + META_EXT)):
+                rawfpath = self.dirpath + '/' + hashpath + RAWFILE_EXT
+                metapath = self.dirpath + '/' + hashpath + META_EXT
 
-                    os.remove(NODE_FILEPATH + hashpath + RAWFILE_EXT)
-                    os.remove(NODE_FILEPATH + hashpath + META_EXT)
+                if os.path.isfile(rawfpath) and os.path.isfile(metapath):
+                    print "Deletion success for " + str(path)
+                    os.remove(rawfpath)
+                    os.remove(metapath)
                     req = Request(ReqType.n2m_update, data = self.nodeID,
                                   path = path, status = True)
                 else:
+                    print "Deletion failure for " + str(path)
                     req = Request(ReqType.n2m_update, data = self.nodeID,
                                   path = path, status = False)
                 msock = self.reqToMaster(req.toJson())

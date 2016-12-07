@@ -300,20 +300,24 @@ def rm(server_file_path):
 
 def mv(server_path_old, server_path_new):
     print "MV: " + str(server_path_old) + " to " + str(server_path_new)
+    print "UNIMPLEMENTED"
     # put server_path_old in ServerPath
     # put server_path_new in name
     pass
 
 def mkdir(server_dir_path, dirname):
     print "MKDIR " + str(dirname) + " in " + str(server_dir_path)
+    print "UNIMPLEMENTED"
     pass
 
 def rmdir(server_dir_path):
     print "RMDIR " + str(server)
+    print "UNIMPLEMENTED"
     pass
 
 def copy(server_path_old, server_path_new):
     print "COPY: " + str(server_path_old) + " to " + str(server_path_new)
+    print "UNIMPLEMENTED"
     # put server_path_old in ServerPath
     # put server_path_new in name
     pass
