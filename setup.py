@@ -5,5 +5,5 @@ FILE_NODE_ADDR = ('localhost', 9101)     # server running on file node
 DEFAULT_MASTERNODE_REGISTRY_FILENAME = './registrydata/reg.data'
 PICKLE_PROTOCOL = 1
 BUFSIZE = 1024
-N_COPIES = 50
-NODES_PER_FILE = 3
+N_COPIES = 30
+NODES_PER_FILE = 3 #k
