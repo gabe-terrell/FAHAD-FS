@@ -606,7 +606,11 @@ class MasterNode(object):
 
     def readJSONFromSock(self, sock, addr):
         data = ''
+        attempts = 0
         while True:
+            attempts += 1
+            if attempts > 10:
+                raise DFSError("Max Attempts allowed; assuming dead socket")
             try:
                 data += sock.recv(setup.BUFSIZE)
                 obj = json.loads(data)
@@ -617,7 +621,7 @@ class MasterNode(object):
                 return
             except Exception as ex:
                 print "Partial read from " + str(addr) + " -- have not yet receved full JSON."
-                time.sleep(0.01)
+                time.sleep(0.05)
                 continue
 
         if not data:
