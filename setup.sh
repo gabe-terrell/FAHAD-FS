@@ -1,2 +1,2 @@
-mkdir nodefiles
-mkdir registrydata
+mkdir -p nodefiles
+mkdir -p registrydata

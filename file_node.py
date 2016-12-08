@@ -15,8 +15,6 @@ from threaded_server import ThreadedServer
 from error_handling import DFSError
 from jsonsocket import readJSONFromSock
 
-
-
 NODE_FILEPATH = str(setup.HOMEDIR) + "nodefiles/"
 RAWFILE_EXT   = ".bin"
 META_EXT      = ".meta"
