@@ -4,6 +4,7 @@ import time
 from node_record import NodeRec
 import hashlib
 from error_handling import DFSError
+from threading import Lock
 
 class DataRecord(object):
 
@@ -36,6 +37,7 @@ class Registry(object):
         self.activenodes  = {}
         self.standbynodes = {}
         self.nodeIDmax    = 0
+        self.lock = Lock()
 
         if archivePath is not None:
             self.archivePath = archivePath
@@ -95,6 +97,7 @@ class Registry(object):
         self.nodeIDmax = max(self.nodeIDmax, nodeID)
         self.saveState()
 
+    # includes all files that are stored on active nodes in the report
     def statusReport(self):
         report = {}
         activenodes = set(self.activenodes.keys())
@@ -105,4 +108,3 @@ class Registry(object):
                     nodes.append(node)
             report[record] = nodes
         return report
-

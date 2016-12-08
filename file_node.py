@@ -404,7 +404,7 @@ class FileNode:
                                 break
                             else:
                                 address = (res['address'], res['port'])
-                                args = [hashpath, plainpath, address]
+                                args = [rawfpath, plainpath, address]
                                 uploadThread = Thread(target = target, args = args)
                                 uploadThread.start()
 
@@ -417,9 +417,8 @@ class FileNode:
             raise DFSError("Error in 'handleExternalFileCopy' with value " + str(e))
         socket.close()
 
-    def failureUpdate(self, path):
-        req = Request(ReqType.n2m_update, data = self.nodeID,
-                      path = path, status = False)
+    def failureUpdate(self, path, sock):
+        raise DFSError("Failure when performing an action on " + str(path))
 
 
     def handleRename(self, socket, address, request):
