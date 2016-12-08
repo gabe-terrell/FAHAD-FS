@@ -11,6 +11,7 @@ class ReqType(object):
     copy = 5
     rename = 6
     ping = 9
+    n2ncopy = 10
 
 
 class ResType(object):

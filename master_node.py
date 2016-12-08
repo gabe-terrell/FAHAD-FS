@@ -1,5 +1,5 @@
-import sys, setup, json, os, ast, time, socket
-from threading import Thread
+import sys, setup, json, random, os, ast, time, socket
+from threading import Thread, Lock
 from threaded_server import ThreadedServer
 from file_structure import Directory
 from client_server_protocol import ClientRequestType, ClientResponse
@@ -8,11 +8,12 @@ from master_registry import Registry, DataRecord
 from viewer import Viewer
 from error_handling import DFSError
 from session import Session
+from jsonsocket import readJSONFromSock
 
 _, CLIENT_PORT = setup.MASTER_CLIENT_ADDR
 _, NODE_PORT = setup.MASTER_NODE_ADDR
 
-PING_INTERVAL = 3 # seconds
+PING_INTERVAL = setup.PING_INTERVAL
 
 def tprint(obj):
     print obj
@@ -27,6 +28,7 @@ class MasterNode(object):
         self.clientServer = ThreadedServer(setup.MASTER_CLIENT_ADDR)
         self.nodeServer = ThreadedServer(setup.MASTER_NODE_ADDR)
         self.sessions = {}
+        self.sessionmutex = Lock()
         self.validateRegistry()
 
     def validateRegistry(self):
@@ -57,10 +59,37 @@ class MasterNode(object):
             data[record.filepath] = record.dataChecksum
         request = Request(type=ReqType.ping, data=data).toJson()
 
+        mutex = Lock()
+        deadNodes = []
+        diskUsages = {}
+
+        def update(node, usage):
+            mutex.acquire()
+            if usage is not None:
+                diskUsages[node.id] = usage
+            else:
+                deadNodes.append(node.id)
+            mutex.release()
+
         target = self.checkStatusOfNode
+        threads = []
         for node in self.reg.activenodes.values():
-            thread = Thread(target=target, args=[node, request])
+            thread = Thread(target=target, args=[node, request, update])
             thread.start()
+            threads.append(thread)
+        for thread in threads:
+            thread.join()
+        # Wait for all threads to complete before printing status report
+
+        if diskUsages:
+            print "\nStatus Report"
+            for nodeId in sorted(diskUsages.keys()):
+                print "Node " + str(nodeId) + ": " + str(diskUsages[nodeId]) + " bytes"
+
+        if deadNodes:
+            print "Lost Nodes: " + ', '.join(map(str,deadNodes))
+            self.launchNodeRecoveryMode(deadNodes)
+
 
     def validPath(self, serverPath):
         # TODO: best way to validate path with the directory structure?
@@ -68,29 +97,65 @@ class MasterNode(object):
         return serverPath in self.reg.data
 
 
-    def checkStatusOfNode(self, node, request):
+    def checkStatusOfNode(self, node, request, updateHandler):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(3)
 
         try:
             sock.connect(node.address)
             sock.send(request)
-            res = self.readJSONFromSock(sock, node.address)
+            res = readJSONFromSock(sock, node.address)
             if res['type'] is ResType.ok:
                 diskUsage = res['len']
                 node.diskUsage = diskUsage
-                print "Node " + str(node.id) + " is storing " + str(diskUsage) + " bytes"
+                updateHandler(node, diskUsage)
         except Exception as ex:
-            print "Node " + str(node.id) + " failed to acknowledge the status check!"
-            print ex
-            print "Removing Node " + str(node.id) + " from active node list"
-            del self.reg.activenodes[node.id]
-
-            for session in self.sessions.values():
-                if node.id in session.nodeIDs:
-                    session.nodeIDs.remove(node.id)
+            updateHandler(node, None)
 
         sock.close()
+
+    def launchNodeRecoveryMode(self, nodes):
+        for node in nodes:
+            del self.reg.activenodes[node]
+
+            for session in self.sessions.values():
+                if node in session.nodeIDs:
+                    session.nodeIDs.remove(node)
+
+        report = self.reg.statusReport()
+
+        for record, nodes in report.iteritems():
+            if len(nodes) < setup.NODES_PER_FILE:
+                self.duplicateRecord(record, nodes)
+
+    # Used in recovery mode or any situations where a file is under-replicated
+    # on the storage cluster (under the amount set in setup.NODES_PER_FILE)
+    def duplicateRecord(self, record, nodes):
+        nodeWithFile = self.reg.activenodes[random.choice(nodes)]
+        nodesNeedingFile = setup.NODES_PER_FILE - len(nodes)
+        nodesToRecieve = self.priorityQueue()[:nodesNeedingFile]
+
+        addrs = [node.address[0] for node in nodesToRecieve]
+        ports = [node.address[1] for node in nodesToRecieve]
+        data = {'port': ports, 'address': addrs}
+        request = Request(type = ReqType.n2ncopy,
+                          data = data,
+                          path = record.filepath)
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect(nodeWithFile.address)
+        sock.send(request.toJson())
+        session = Session(path = record.filepath, type = 'upload',
+                             nodeIDs = [n.id for n in nodesToRecieve],
+                             clientsocket = sock, dir = self.root,
+                             checksum = record.checksum)
+
+        self.sessionmutex.acquire()
+        self.sessions[record.filepath] = session
+        self.sessionmutex.release()
+
+        print "Sending copy request to node " + str(nodeWithFile.id) + " for file:\n" + request.toJson()
+
 
     def __startServer(self, server):
         server.listen()
@@ -267,7 +332,6 @@ class MasterNode(object):
 
     def handleDownloadRequest(self, socket, path):
         try:
-            self.waitForSessionClose(path)
             node = self.findNodeWithFile(path)
             if node:
                 response = ClientResponse(type = ClientRequestType.download,
@@ -306,12 +370,17 @@ class MasterNode(object):
     #     # load balance here
     #     pass
 
-    def waitForSessionClose(self, session):
-        delay = 0.001
-        delayInc = 0.01
-        while session in self.sessions.values():
+    def waitForSessionClose(self, path):
+        delay = 0.05
+        delayInc = 0.1
+        while path in self.sessions:
             time.sleep(delay)
             delay = delay + delayInc
+
+    def priorityQueue(self):
+        nodes = self.reg.activenodes.values()
+        nodes.sort(key=lambda n: n.diskUsage, reverse=False)
+        return nodes[:setup.NODES_PER_FILE]
 
     def handleUploadRequest(self, socket, path, filesize, filename, checksum):
 
@@ -327,9 +396,7 @@ class MasterNode(object):
             if dir:
                 try:
                     tprint("Sending upload ACK to client")
-                    nodes = self.reg.activenodes.values()
-                    nodes.sort(key=lambda n: n.diskUsage, reverse=False)
-                    nodes = nodes[:setup.NODES_PER_FILE]
+                    nodes = self.priorityQueue()
                     addrs = [node.address[0] for node in nodes]
                     ports = [node.address[1] for node in nodes]
                     response = ClientResponse(type = ClientRequestType.upload,
@@ -342,12 +409,16 @@ class MasterNode(object):
                     for node in nodes:
                         print node.address
                     serverFile = path + '/' + filename if path[-1] != '/' else path + filename
-                    self.waitForSessionClose(serverFile) # to avoid session overlap
+
                     ids = [node.id for node in nodes]
                     session = Session(path = serverFile, type = 'upload',
                                              nodeIDs = ids, clientsocket = socket,
                                              dir = dir, checksum = checksum)
+                    print "cs in upload request is: " + str(session.checksum)
+                    self.waitForSessionClose(serverFile) # to avoid session overlap
+                    self.sessionmutex.acquire()
                     self.sessions[serverFile] = session
+                    self.sessionmutex.release()
                     socket.send(response.toJson())
                     tprint("Upload info sent to client.")
 
@@ -381,7 +452,9 @@ class MasterNode(object):
                 self.waitForSessionClose(fullpath)
                 session = Session(path = fullpath, type = 'delete', nodeIDs = nids,
                                   clientsocket = socket, dir = self.root.cd(fullpath[1:].split('/')))
+                self.sessionmutex.acquire()
                 self.sessions[fullpath] = session
+                self.sessionmutex.release()
                 res = ClientResponse(ClientRequestType.rm,
                                      output = 'Delete Request for ' + str(fullpath) + ' received',
                                      success = True, address = ips, port = ports)
@@ -473,6 +546,7 @@ class MasterNode(object):
 
             res = Response(ResType.m2n_wakeres, nodeID)
             socket.send(res.toJson())
+
             self.reg.addNode(nodeID, (address[0], node_listening_port))
             socket.close()
 
@@ -489,7 +563,7 @@ class MasterNode(object):
             try:
                 if path not in self.reg.data:
                     session.dir.files.add(path.split('/')[-1])
-                    rec = DataRecord(path, [nodeID], checksum)
+                    rec = DataRecord(path, [nodeID], session.checksum)
                     self.reg.addFile(rec)
                 else:
                     self.reg.data[path].nodeIDList.append(nodeID)
@@ -503,8 +577,12 @@ class MasterNode(object):
                                               success = True)
                     session.clientsocket.send(response.toJson())
                     session.clientsocket.close()
+                    session.mutex.release()
                     if path in self.sessions:
                         del self.sessions[path]
+                else:
+                    session.mutex.release()
+
             except Exception as e:
                 raise DFSError("Exception with name " + str(e) + " raised in handleNodeUpdate/uploadUpdate")
 
@@ -515,14 +593,18 @@ class MasterNode(object):
                     if session.finished():
                         print "Deletion complete!"
                         rec = self.reg.data.pop(path)
-                        if path in self.sessions:
-                            del self.sessions[path]
+
                         response = ClientResponse(type = ClientRequestType.rm,
                                                   output = "Deletion Success",
                                                   success = True)
                         session.clientsocket.send(response.toJson())
                         session.clientsocket.close()
+                        session.mutex.release()
                         print "All filenodes have deleted " + path + " -- Disconnecting from client"
+                        if path in self.sessions:
+                            del self.sessions[path]
+                    else:
+                        session.mutex.release()
                 else:
                     raise DFSError("Deletion update for " + str(path) + \
                                    ", which does not exist on master.")
@@ -531,7 +613,7 @@ class MasterNode(object):
 
         def uploadRetry(nodeID, path, session):
             try:
-                print "Node " + str(nodeID) + " failed the checksum for " + path
+                print "Node " + str(nodeID) + " failed the upload for " + path
                 if session.nTriesLeft > 0:
                     node = self.reg.activenodes[nodeID]
                     response = ClientResponse(type = ClientRequestType.upload,
@@ -539,8 +621,9 @@ class MasterNode(object):
                                               success = False,
                                               address = node.address[0],
                                               port = node.address[1])
-                    session.nTries = session.nTries - 1
+                    session.nTriesLeft = session.nTriesLeft - 1
                     session.clientsocket.send(response.toJson())
+                    session.mutex.release()
                 else:
                     print "Upload out of tries."
                     if path in self.reg.data:
@@ -555,6 +638,7 @@ class MasterNode(object):
                                                   output = "UPLOAD " + str(path) + "ABORTED.",
                                                   success = True)
                         session.clientsocket.send(response.toJson())
+                    session.mutex.release()
                     del self.sessions[path]
 
             except Exception as e:
@@ -565,11 +649,14 @@ class MasterNode(object):
                 print "Node " + str(nodeID) + " failed to delete " + str(path) +\
                       "\n File was already deleted."
                 if session.finished():
+                    session.mutex.release()
                     del self.sessions[path]
                     response = ClientResponse(ClientRequestType.rm,
                                               output = "File deleted: " + str(path),
                                               success = True)
                     session.clientsocket.send(response.toJson())
+                else:
+                    session.mutex.release()
 
             except Exception as e:
                 raise DFSError("Exception with name " + str(e) + " raised in handleNodeUpdate/deleteRetry")
@@ -586,14 +673,9 @@ class MasterNode(object):
 
             if path in self.sessions:
                 session = self.sessions[path]
+                session.mutex.acquire()
             else:
-                session = None
                 raise DFSError("Got Node Update for file that is not in session.")
-
-            # mutex
-            while session.locked:
-                time.sleep(0.05)
-            session.lock()
 
             if status and session.verify(checksum, nodeID):
                 session.nodeIDs.remove(nodeID)
@@ -606,46 +688,11 @@ class MasterNode(object):
             elif session.type is 'delete':
                 deleteRetry(nodeID, path, session)
 
-            session.unlock()
 
         except Exception, ex:
             print "An exception in 'handleNodeUpdate' with name \n" + str(ex) + \
                   "\n was raised. Sending shutdown signal to filenode."
         socket.close()
-            #self.killNode(nodeID)
-
-
-    # initiate a connection to filenode by id
-    # TODO: sock, clientsocket, and socket... lmao, this doesn't look right
-    # def connectToNode(self, id):
-    #     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    #     clientsocket.connect(self.standbynodes[id].address)
-    #     return socket
-
-    def readJSONFromSock(self, sock, addr):
-        data = ''
-        attempts = 0
-        while True:
-            attempts += 1
-            if attempts > 10:
-                raise DFSError("Max Attempts allowed; assuming dead socket")
-            try:
-                data += sock.recv(setup.BUFSIZE)
-                obj = json.loads(data)
-                break
-            except socket.error as ex:
-                print "Error reading from socket -- connection may have broken."
-                sock.close()
-                return
-            except Exception as ex:
-                print "Partial read from " + str(addr) + " -- have not yet receved full JSON."
-                time.sleep(0.05)
-                continue
-
-        if not data:
-            raise DFSError("No data recieved in readJSONFromSock")
-
-        return obj
 
     def killNode(self, nid):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -667,7 +714,7 @@ class Unbuffered(object):
 
 def main(argc, argv):
     sys.stdout = Unbuffered(sys.stdout)
-    if argc > 1 and os.path.isfile(setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME):
+    if argc > 1 and os.path.isfile(setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME) and argv[1] is '--from-existing':
         print "Loading registry from file..."
         mnode = MasterNode(registryFile = setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME)
     else:

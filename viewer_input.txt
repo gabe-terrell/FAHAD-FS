@@ -1,3 +1,2 @@
-help
 ls
 exit

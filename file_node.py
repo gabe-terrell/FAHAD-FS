@@ -8,10 +8,13 @@ import threading
 import json
 import errno
 import hashlib
+from threading import Thread
 from subprocess import call
 from filenode_master_protocol import *
 from threaded_server import ThreadedServer
 from error_handling import DFSError
+from jsonsocket import readJSONFromSock
+
 
 
 NODE_FILEPATH = str(setup.HOMEDIR) + "nodefiles/"
@@ -32,7 +35,7 @@ class FileNode:
     def __init__(self, masterAddr = NODESERVER_ADDR, serverPort = NODESERVER_PORT, mode = None):
 
         port = NODESERVER_PORT
-        
+
         for i in range(1, setup.N_COPIES):
             try:
                 self.server = ThreadedServer((NODESERVER_ADDR, port),
@@ -48,6 +51,7 @@ class FileNode:
         self.nodeID = None
         self.dirpath = None
         self.log = []
+        self.mode = mode
         self.wakeup() # sets nodeid, gives server address, checks directory integrity
 
 
@@ -65,7 +69,10 @@ class FileNode:
     def wakeup(self):
 
         dirs = os.walk(NODE_FILEPATH).next()[1] # list of directories
-        ids = [int(re.findall('\d+', d).pop()) for d in dirs]
+        if self.mode == 'fresh':
+            ids = []
+        else:
+            ids = [int(re.findall('\d+', d).pop()) for d in dirs]
         data = {'ids': ids, 'port': self.server.port}
         request = Request(ReqType.n2m_wakeup, data).toJson()
         clientsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -75,10 +82,10 @@ class FileNode:
             clientsocket.connect(setup.MASTER_NODE_ADDR)
             clientsocket.send(request)
             print "ID REQUEST: " + request
-            response = self.readJSONFromSock(clientsocket, setup.MASTER_NODE_ADDR)
+            response = readJSONFromSock(clientsocket, setup.MASTER_NODE_ADDR)
 
             if not 'type' in response:
-                raise error("Master sent bad response.")
+                raise DFSError("Master sent bad response.")
 
             if response['type'] is ResType.m2n_wakeres:
                 nodeID = int(response['data'])
@@ -112,7 +119,7 @@ class FileNode:
     def handleConnection(self, sock, address):
 
         try:
-            request = self.readJSONFromSock(sock, address)
+            request = readJSONFromSock(sock, address)
         except:
             print "Error getting data from " + str(address) + " in 'handleConnection'"
             print "Closing socket."
@@ -121,7 +128,7 @@ class FileNode:
         # handle request
         try:
             if not 'type' in request:
-                raise error("Bad request to filenode recieved from " + str(address))
+                raise DFSError("Bad request to filenode recieved from " + str(address))
 
             type = request['type']
 
@@ -137,6 +144,9 @@ class FileNode:
             elif type is ReqType.copy:
                 self.handleFileCopy(sock, address, request)
 
+            elif type is ReqType.n2ncopy:
+                self.handleExternalFileCopy(sock, address, request)
+
             elif type is ReqType.rename:
                 self.handleRename(sock, address, request)
 
@@ -147,17 +157,13 @@ class FileNode:
                 self.handleStatusCheck(sock, address, request)
 
             else:
-                raise error("Invalid request to file node from " + str(address))
+                raise DFSError("Invalid request to file node from " + str(address))
 
         except Exception as ex:
             print "An exception in 'handleConnection' with name \n" + str(ex) + \
                   "\n was raised. Closing socket...\n"
             sock.close()
             return
-
-
-    def initiateMasterConnect(self):
-        pass
 
     def hashForPath(self, path):
         m = hashlib.md5()
@@ -168,14 +174,14 @@ class FileNode:
 
         try:
             if not ('len' in request and 'path' in request):
-                raise error("Incorrect fields present in STORE JSON.")
+                raise DFSError("Incorrect fields present in STORE JSON.")
 
             elif request['len'] is None or request['path'] is None:
-                raise error("Len and path fields initialized to None in STORE JSON")
+                raise DFSError("Len and path fields initialized to None in STORE JSON")
 
             nBytesExpected = request['len']
             if not isinstance(nBytesExpected, int):
-                raise error("Len field is not an integer in STORE request from " + str(address))
+                raise DFSError("Len field is not an integer in STORE request from " + str(address))
 
             # hash filepath to get file handle
             path = request['path']
@@ -252,28 +258,6 @@ class FileNode:
                            " with value " + str(e) + " in function 'reqToMaster'.")
         return sock
 
-    def readJSONFromSock(self, sock, addr):
-        data = ''
-        while True:
-            try:
-                data += sock.recv(setup.BUFSIZE)
-                obj = json.loads(data)
-                break
-            except socket.error as ex:
-                print "Error reading from socket -- connection may have broken."
-                sock.close()
-                return
-            except Exception as ex:
-                print "Partial read from " + str(addr) + " -- have not yet receved full JSON."
-                time.sleep(0.5)
-                continue
-
-        if not data: raise DFSError("No data recieved in readJSONFromSock")
-
-        return obj
-
-
-
     def handleFileRetrieve(self, socket, address, request):
         # get file from storage
         # send it in chunks that won't be too big for ram
@@ -290,7 +274,7 @@ class FileNode:
                 ack = Response(ResType.ok, path=path, length=size)
                 socket.send(ack.toJson())
 
-                res = self.readJSONFromSock(socket, address)
+                res = readJSONFromSock(socket, address)
                 if res and 'type' in res and res['type'] is ResType.ok:
                     pass
                 else:
@@ -323,15 +307,17 @@ class FileNode:
                 metapath = self.dirpath + '/' + hashpath + META_EXT
 
                 if os.path.isfile(rawfpath) and os.path.isfile(metapath):
-                    print "Deletion success for " + str(path)
+
                     os.remove(rawfpath)
                     os.remove(metapath)
                     req = Request(ReqType.n2m_update, data = self.nodeID,
                                   path = path, status = True)
+                    print "Deletion success for " + str(path)
                 else:
                     print "Deletion failure for " + str(path)
-                    req = Request(ReqType.n2m_update, data = self.nodeID,
-                                  path = path, status = False)
+                    self.failureUpdate()
+                    msock.close()
+                    return
                 msock = self.reqToMaster(req.toJson())
                 msock.close()
 
@@ -347,6 +333,92 @@ class FileNode:
     def handleFileCopy(self, socket, address, request):
         # copy the file to some new location (could even be self)
         pass
+
+    def uploadToNode(self, hashed_path, plaintext_path, node_address):
+
+        def connectToNode(node_address):
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect(node_address)
+            return s
+
+        def messageSocket(s, message):
+            s.send(message.toJson())
+            return readJSONFromSock(s, str(s.getpeername()))
+
+        with io.open(hashed_path, 'rb') as file:
+            size = os.path.getsize(hashed_path)
+            s = connectToNode(node_address)
+            res = messageSocket(s, Request(ReqType.store,
+                                            path = plaintext_path, length = size))
+
+            print "Sending data transfer request to filenode..."
+            if res and 'type' in res and res['type'] is ResType.ok:
+                pass
+            else:
+                print "Did not receive ack from filenode"
+                raise DFSError("No ack from filenode in 'handleExternalFileCopy'")
+
+            print "Sending data to filenode..."
+            while True:
+                data = file.read(setup.BUFSIZE)
+                if data:
+                    s.send(data)
+                else:
+                    break
+            s.close()
+
+    def handleExternalFileCopy(self, socket, address, request):
+
+        try:
+            if 'path' in request and 'data' in request:
+                plainpath = request['path']
+                addrs = request['data']
+                if 'address' in addrs and 'port' in addrs:
+                    ips = addrs['address']
+                    ports = addrs['port']
+                else:
+                    self.failureUpdate(plainpath)
+                    socket.close()
+                    return
+
+                print "Performing external file copy of " + str(plainpath) + " to " + str(addrs)
+                hashpath = self.hashForPath(plainpath)
+                rawfpath = self.dirpath + '/' + hashpath + RAWFILE_EXT
+
+                if os.path.isfile(rawfpath):
+                    target = self.uploadToNode
+                    adds = [pair for pair in zip(ips, ports)]
+                    for ad in adds:
+                        args = [rawfpath, plainpath, ad]
+                        uploadThread = Thread(target = target, args = args)
+                        uploadThread.start()
+
+                    # wait for server to tell you that it worked. if not,
+                    # resend the file
+                    while True:
+                        res = readJSONFromSock(socket, setup.MASTER_NODE_ADDR)
+                        if res:
+                            print res['output']
+                            if res['success']:
+                                break
+                            else:
+                                address = (res['address'], res['port'])
+                                args = [rawfpath, plainpath, address]
+                                uploadThread = Thread(target = target, args = args)
+                                uploadThread.start()
+
+                else:
+                    self.failureUpdate(plainpath)
+            else:
+                self.failureUpdate('unknown_path')
+
+        except Exception as e:
+            raise DFSError("Error in 'handleExternalFileCopy' with value " + str(e))
+        socket.close()
+
+    def failureUpdate(self, path, sock):
+        raise DFSError("Failure when performing an action on " + str(path))
+
 
     def handleRename(self, socket, address, request):
         # rename the file (change hash key in dictionary)
@@ -396,10 +468,8 @@ class FileNode:
             if metaname in metadata:
                 checksum = self.fetchMetadata(metaname)['checksum']
                 if checksums[file] == checksum:
-                    #print file + " validated"
                     pass
                 else:
-                    #print file + " failed"
                     pass
                     errors.append(metaname)
                 metadata.remove(metaname)
@@ -451,6 +521,8 @@ def main(argc, argv):
 
     if flag == "-test":
         fnode = FileNode(mode = 'test')
+    elif flag == "-fresh":
+        fnode = FileNode(mode = 'fresh')
     else:
         fnode = FileNode()
 

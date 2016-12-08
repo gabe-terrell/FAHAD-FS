@@ -8,6 +8,7 @@ from client_server_protocol import ClientRequestType, ClientRequest
 from filenode_master_protocol import ReqType as FileRequestType
 from filenode_master_protocol import ResType as FileResponseType
 from filenode_master_protocol import Request as FileRequest
+from jsonsocket import readJSONFromSock
 
 BUFFER_SIZE = BUFSIZE
 
@@ -37,36 +38,8 @@ def connect_to_master():
     return connect_to_node(MASTER_CLIENT_ADDR)
 
 def message_socket(s, message):
-    # print "Sending to server:\n" + str(message.toJson())
-
     s.send(message.toJson())
-
     return readJSONFromSock(s, str(s.getpeername()))
-
-def readJSONFromSock(sock, addr):
-    data = ''
-    timeout_seconds = 60
-    wait_until = datetime.datetime.now() + timedelta(seconds = timeout_seconds)
-    while True:
-        try:
-            data += sock.recv(BUFFER_SIZE)
-            obj = json.loads(data)
-            break
-        except socket.error as ex:
-            print "Error reading from socket -- connection may have broken."
-            sock.close()
-            return
-        except Exception as ex:
-            if wait_until < datetime.datetime.now():
-                print "READ TIMED OUT."
-                sock.close()
-                return
-            continue
-
-    if not data:
-        raise DFSError("No data recieved in readJSONFromSock")
-
-    return obj
 
 # command, type
 def file_viewer():

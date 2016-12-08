@@ -4,6 +4,7 @@ import time
 from node_record import NodeRec
 import hashlib
 from error_handling import DFSError
+from threading import Lock
 
 class DataRecord(object):
 
@@ -15,9 +16,7 @@ class DataRecord(object):
             self.timecreated  = time.time()
             self.timemodified = self.timecreated
             self.timeaccessed = self.timecreated
-            cs = hashlib.md5()
-            cs.update(filepath)
-            self.checksum = str(cs.hexdigest())
+            self.checksum = dataChecksum
         except Exception as e:
             raise DFSError("Error initializing DataRecord for file " + str(filepath) +
                            " with exception " + str(e))
@@ -36,6 +35,7 @@ class Registry(object):
         self.activenodes  = {}
         self.standbynodes = {}
         self.nodeIDmax    = 0
+        self.lock = Lock()
 
         if archivePath is not None:
             self.archivePath = archivePath
@@ -94,3 +94,15 @@ class Registry(object):
         self.standbynodes[nodeID] = nr
         self.nodeIDmax = max(self.nodeIDmax, nodeID)
         self.saveState()
+
+    # includes all files that are stored on active nodes in the report
+    def statusReport(self):
+        report = {}
+        activenodes = set(self.activenodes.keys())
+        for record in self.data.values():
+            nodes = []
+            for node in record.nodeIDList:
+                if node in activenodes:
+                    nodes.append(node)
+            report[record] = nodes
+        return report

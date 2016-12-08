@@ -1,3 +1,5 @@
+from threading import Lock
+
 class Session(object):
 
     def __init__(self, path, type, nodeIDs, clientsocket, dir, checksum = None):
@@ -8,7 +10,7 @@ class Session(object):
         self.clientsocket = clientsocket
         self.dir = dir
         self.nTriesLeft = 3 # number of tries we get to accomplish session goal
-        self.locked = False
+        self.mutex = Lock()
 
     def verify(self, checksum, nodeId):
         valid = False

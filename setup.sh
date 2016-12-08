@@ -1,0 +1,2 @@
+mkdir nodefiles
+mkdir registrydata
