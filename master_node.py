@@ -1,5 +1,5 @@
-import sys, setup, json, os, ast, time, socket
-from threading import Thread
+import sys, setup, json, random, os, ast, time, socket
+from threading import Thread, Lock
 from threaded_server import ThreadedServer
 from file_structure import Directory
 from client_server_protocol import ClientRequestType, ClientResponse
@@ -57,10 +57,36 @@ class MasterNode(object):
             data[record.filepath] = record.dataChecksum
         request = Request(type=ReqType.ping, data=data).toJson()
 
+        mutex = Lock()
+        deadNodes = []
+        diskUsages = {}
+        def update(node, usage):
+            mutex.acquire()
+            if usage is not None:
+                diskUsages[node.id] = usage
+            else:
+                deadNodes.append(node.id)
+            mutex.release()
+
         target = self.checkStatusOfNode
+        threads = []
         for node in self.reg.activenodes.values():
-            thread = Thread(target=target, args=[node, request])
+            thread = Thread(target=target, args=[node, request, update])
             thread.start()
+            threads.append(thread)
+        for thread in threads:
+            thread.join()
+        # Wait for all threads to complete before printing status report
+
+        if diskUsages:
+            print "\nStatus Report"
+            for nodeId in sorted(diskUsages.keys()):
+                print "Node " + str(nodeId) + ": " + str(diskUsages[nodeId]) + " bytes"
+
+        if deadNodes:
+            print "Lost Nodes: " + ', '.join(map(str,deadNodes))
+            self.launchNodeRecoveryMode(deadNodes)
+
 
     def validPath(self, serverPath):
         # TODO: best way to validate path with the directory structure?
@@ -68,7 +94,7 @@ class MasterNode(object):
         return serverPath in self.reg.data
 
 
-    def checkStatusOfNode(self, node, request):
+    def checkStatusOfNode(self, node, request, updateHandler):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(3)
 
@@ -79,18 +105,46 @@ class MasterNode(object):
             if res['type'] is ResType.ok:
                 diskUsage = res['len']
                 node.diskUsage = diskUsage
-                print "Node " + str(node.id) + " is storing " + str(diskUsage) + " bytes"
+                updateHandler(node, diskUsage)
         except Exception as ex:
-            print "Node " + str(node.id) + " failed to acknowledge the status check!"
-            print ex
-            print "Removing Node " + str(node.id) + " from active node list"
-            del self.reg.activenodes[node.id]
-
-            for session in self.sessions.values():
-                if node.id in session.nodeIDs:
-                    session.nodeIDs.remove(node.id)
+            # print "Node " + str(node.id) + " failed to acknowledge the status check!"
+            # print ex
+            # print "Removing Node " + str(node.id) + " from active node list"
+            updateHandler(node, None)
 
         sock.close()
+
+    def launchNodeRecoveryMode(self, nodes):
+        for node in nodes:
+            del self.reg.activenodes[node]
+
+            for session in self.sessions.values():
+                if node in session.nodeIDs:
+                    session.nodeIDs.remove(node)
+
+        report = self.reg.statusReport()
+        for record, nodes in report.iteritems():
+            if len(nodes) < setup.NODES_PER_FILE:
+                self.duplicateRecord(record, nodes)
+
+    def duplicateRecord(self, record, nodes):
+        nodeWithFile = self.reg.activenodes[random.choice(nodes)]
+        nodesNeedingFile = setup.NODES_PER_FILE - len(nodes)
+        nodesToRecieve = self.priorityQueue()[:nodesNeedingFile]
+
+        addrs = [node.address[0] for node in nodesToRecieve]
+        ports = [node.address[1] for node in nodesToRecieve]
+        data = {'port': ports, 'address': addrs}
+        request = Request(type = ReqType.n2ncopy,
+                          data = data,
+                          path = record.filepath)
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect(nodeWithFile.address)
+        sock.send(request.toJson())
+
+        print "Sending copy request to node with file:\n" + request.toJson()
+
 
     def __startServer(self, server):
         server.listen()
@@ -313,6 +367,11 @@ class MasterNode(object):
             time.sleep(delay)
             delay = delay + delayInc
 
+    def priorityQueue(self):
+        nodes = self.reg.activenodes.values()
+        nodes.sort(key=lambda n: n.diskUsage, reverse=False)
+        return nodes[:setup.NODES_PER_FILE]
+
     def handleUploadRequest(self, socket, path, filesize, filename, checksum):
 
         def error(message):
@@ -327,9 +386,7 @@ class MasterNode(object):
             if dir:
                 try:
                     tprint("Sending upload ACK to client")
-                    nodes = self.reg.activenodes.values()
-                    nodes.sort(key=lambda n: n.diskUsage, reverse=False)
-                    nodes = nodes[:setup.NODES_PER_FILE]
+                    nodes = self.priorityQueue()
                     addrs = [node.address[0] for node in nodes]
                     ports = [node.address[1] for node in nodes]
                     response = ClientResponse(type = ClientRequestType.upload,

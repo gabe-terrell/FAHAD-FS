@@ -94,3 +94,15 @@ class Registry(object):
         self.standbynodes[nodeID] = nr
         self.nodeIDmax = max(self.nodeIDmax, nodeID)
         self.saveState()
+
+    def statusReport(self):
+        report = {}
+        activenodes = set(self.activenodes.keys())
+        for record in self.data.values():
+            nodes = []
+            for node in record.nodeIDList:
+                if node in activenodes:
+                    nodes.append(node)
+            report[record] = nodes
+        return report
+
