@@ -85,7 +85,7 @@ class FileNode:
             response = readJSONFromSock(clientsocket, setup.MASTER_NODE_ADDR)
 
             if not 'type' in response:
-                raise error("Master sent bad response.")
+                raise DFSError("Master sent bad response.")
 
             if response['type'] is ResType.m2n_wakeres:
                 nodeID = int(response['data'])
@@ -128,7 +128,7 @@ class FileNode:
         # handle request
         try:
             if not 'type' in request:
-                raise error("Bad request to filenode recieved from " + str(address))
+                raise DFSError("Bad request to filenode recieved from " + str(address))
 
             type = request['type']
 
@@ -157,7 +157,7 @@ class FileNode:
                 self.handleStatusCheck(sock, address, request)
 
             else:
-                raise error("Invalid request to file node from " + str(address))
+                raise DFSError("Invalid request to file node from " + str(address))
 
         except Exception as ex:
             print "An exception in 'handleConnection' with name \n" + str(ex) + \
@@ -174,14 +174,14 @@ class FileNode:
 
         try:
             if not ('len' in request and 'path' in request):
-                raise error("Incorrect fields present in STORE JSON.")
+                raise DFSError("Incorrect fields present in STORE JSON.")
 
             elif request['len'] is None or request['path'] is None:
-                raise error("Len and path fields initialized to None in STORE JSON")
+                raise DFSError("Len and path fields initialized to None in STORE JSON")
 
             nBytesExpected = request['len']
             if not isinstance(nBytesExpected, int):
-                raise error("Len field is not an integer in STORE request from " + str(address))
+                raise DFSError("Len field is not an integer in STORE request from " + str(address))
 
             # hash filepath to get file handle
             path = request['path']
