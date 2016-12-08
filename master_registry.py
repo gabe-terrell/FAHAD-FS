@@ -16,9 +16,7 @@ class DataRecord(object):
             self.timecreated  = time.time()
             self.timemodified = self.timecreated
             self.timeaccessed = self.timecreated
-            cs = hashlib.md5()
-            cs.update(filepath)
-            self.checksum = str(cs.hexdigest())
+            self.checksum = dataChecksum
         except Exception as e:
             raise DFSError("Error initializing DataRecord for file " + str(filepath) +
                            " with exception " + str(e))

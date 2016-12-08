@@ -57,7 +57,6 @@ class MasterNode(object):
         data = {}
         for record in self.reg.data.values():
             data[record.filepath] = record.dataChecksum
-            print "status check data checksum is " + str(record.dataChecksum)
         request = Request(type=ReqType.ping, data=data).toJson()
 
         mutex = Lock()
@@ -111,9 +110,6 @@ class MasterNode(object):
                 node.diskUsage = diskUsage
                 updateHandler(node, diskUsage)
         except Exception as ex:
-            # print "Node " + str(node.id) + " failed to acknowledge the status check!"
-            # print ex
-            # print "Removing Node " + str(node.id) + " from active node list"
             updateHandler(node, None)
 
         sock.close()
@@ -149,7 +145,6 @@ class MasterNode(object):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect(nodeWithFile.address)
         sock.send(request.toJson())
-        print "duplicating record. checksum is " + str(record.checksum)
         session = Session(path = record.filepath, type = 'upload',
                              nodeIDs = [n.id for n in nodesToRecieve],
                              clientsocket = sock, dir = self.root,
@@ -158,7 +153,6 @@ class MasterNode(object):
         self.sessionmutex.acquire()
         self.sessions[record.filepath] = session
         self.sessionmutex.release()
-
 
         print "Sending copy request to node " + str(nodeWithFile.id) + " for file:\n" + request.toJson()
 
@@ -683,10 +677,6 @@ class MasterNode(object):
             else:
                 raise DFSError("Got Node Update for file that is not in session.")
 
-            print status
-            print nodeID
-            print "cs in update request from node: " + str(checksum) # corrent at filenode level
-            print "cs stored in session " + str(session.checksum) # incorrect in session
             if status and session.verify(checksum, nodeID):
                 session.nodeIDs.remove(nodeID)
                 if session.type is 'upload':

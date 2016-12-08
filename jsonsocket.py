@@ -27,5 +27,4 @@ def readJSONFromSock(sock, addr):
 
     if not data: raise DFSError("No data recieved in readJSONFromSock")
     print str(obj)
-
     return obj

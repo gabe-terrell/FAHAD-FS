@@ -351,14 +351,14 @@ class FileNode:
             res = messageSocket(s, Request(ReqType.store,
                                             path = plaintext_path, length = size))
 
-            print "Sending data transfer request to filenode"
+            print "Sending data transfer request to filenode..."
             if res and 'type' in res and res['type'] is ResType.ok:
                 pass
             else:
                 print "Did not receive ack from filenode"
                 raise DFSError("No ack from filenode in 'handleExternalFileCopy'")
 
-            print "Sending data to filenode"
+            print "Sending data to filenode..."
             while True:
                 data = file.read(setup.BUFSIZE)
                 if data:
@@ -388,7 +388,6 @@ class FileNode:
                 if os.path.isfile(rawfpath):
                     target = self.uploadToNode
                     adds = [pair for pair in zip(ips, ports)]
-                    print adds
                     for ad in adds:
                         args = [rawfpath, plainpath, ad]
                         uploadThread = Thread(target = target, args = args)
@@ -469,10 +468,8 @@ class FileNode:
             if metaname in metadata:
                 checksum = self.fetchMetadata(metaname)['checksum']
                 if checksums[file] == checksum:
-                    #print file + " validated"
                     pass
                 else:
-                    #print file + " failed"
                     pass
                     errors.append(metaname)
                 metadata.remove(metaname)
