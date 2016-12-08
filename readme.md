@@ -10,15 +10,22 @@ Three main components:
 
 #### Usage:
 
+0. For the first time...
+    - ```$ ./setup.sh$```
 1. Start the Master Node:
     1. ```$ ./cleanup.sh```
-    2. ```$ python master_node.py```
+    2. Run from file or with a fresh filesystem:
+        - ```$ python master_node.py```
+        - ```$ python master_node.py --from-file```
 2. Start a File Node:
     - ```$ python file_node.py```
 3. Run a client:
     - ```$ python client.py -v``` (open the filesystem viewer)
     - ```$ python client.py -d [PATH_ON_SERVER] [LOCAL_PATH]``` (download file from filesystem to client machine)
     - ```$ python client.py -u [PATH_ON_SERVER] [LOCAL_PATH]``` (upload file from client machine to filesystem)
+    - ```python client.py --stat <path_on_server>``` (get info on a file)
+    - ```python client.py --mkdir <path_on_server>``` (make a directory)
+    - ```python client.py --rm <path_on_server>``` (remove a file)
 
 
 #### TODO:
@@ -40,7 +47,6 @@ Three main components:
     - [ ] CP: unimplemented
     - [ ] RMDIR: unimplemented
     - [ ] MV: unimplemented
-
 - [X] __File upload direct from client to filenode__
     - [X] server handshake with location passing
     - [X] transmission from client to filenode and storage on filenode local filesystem
@@ -55,9 +61,9 @@ Three main components:
 - [X] load balancing for selection of file nodes to receive data
     - [X] load balancing for size: file nodes with minimum data receive priority
     - [X] load balancing to manage bandwidth to each node: keep filenodes from getting choked
-- [ ] Dynamic file redistribution
+- [X] Dynamic file redistribution
     - [ ] Redistribution of files to fresh nodes upon entry to the network (directed by master)
-    - [ ] Replication of files to new nodes under occurrence of file node failure
+    - [X] Replication of files to new nodes under occurrence of file node failure
 - [X] File Node sends 'still-alive' pings to master so master can track 'active' nodes
 - [ ] Client: splitting of large files across multiple file nodes in 'chunks'
 - [ ] Client: caching of recently accessed files at host machine

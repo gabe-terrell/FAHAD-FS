@@ -13,7 +13,7 @@ from jsonsocket import readJSONFromSock
 _, CLIENT_PORT = setup.MASTER_CLIENT_ADDR
 _, NODE_PORT = setup.MASTER_NODE_ADDR
 
-PING_INTERVAL = 3 # seconds
+PING_INTERVAL = setup.PING_INTERVAL
 
 def tprint(obj):
     print obj
@@ -693,7 +693,6 @@ class MasterNode(object):
             print "An exception in 'handleNodeUpdate' with name \n" + str(ex) + \
                   "\n was raised. Sending shutdown signal to filenode."
         socket.close()
-        #self.killNode(nodeID)
 
     def killNode(self, nid):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -715,7 +714,7 @@ class Unbuffered(object):
 
 def main(argc, argv):
     sys.stdout = Unbuffered(sys.stdout)
-    if argc > 1 and os.path.isfile(setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME):
+    if argc > 1 and os.path.isfile(setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME) and argv[1] is '--from-existing':
         print "Loading registry from file..."
         mnode = MasterNode(registryFile = setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME)
     else:
