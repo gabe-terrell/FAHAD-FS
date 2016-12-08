@@ -8,6 +8,7 @@ from master_registry import Registry, DataRecord
 from viewer import Viewer
 from error_handling import DFSError
 from session import Session
+from jsonsocket import readJSONFromSock
 
 _, CLIENT_PORT = setup.MASTER_CLIENT_ADDR
 _, NODE_PORT = setup.MASTER_NODE_ADDR
@@ -75,7 +76,7 @@ class MasterNode(object):
         try:
             sock.connect(node.address)
             sock.send(request)
-            res = self.readJSONFromSock(sock, node.address)
+            res = readJSONFromSock(sock, node.address)
             if res['type'] is ResType.ok:
                 diskUsage = res['len']
                 node.diskUsage = diskUsage
@@ -307,8 +308,8 @@ class MasterNode(object):
     #     pass
 
     def waitForSessionClose(self, session):
-        delay = 0.001
-        delayInc = 0.01
+        delay = 0.01
+        delayInc = 0.02
         while session in self.sessions.values():
             time.sleep(delay)
             delay = delay + delayInc
@@ -612,40 +613,7 @@ class MasterNode(object):
             print "An exception in 'handleNodeUpdate' with name \n" + str(ex) + \
                   "\n was raised. Sending shutdown signal to filenode."
         socket.close()
-            #self.killNode(nodeID)
-
-
-    # initiate a connection to filenode by id
-    # TODO: sock, clientsocket, and socket... lmao, this doesn't look right
-    # def connectToNode(self, id):
-    #     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    #     clientsocket.connect(self.standbynodes[id].address)
-    #     return socket
-
-    def readJSONFromSock(self, sock, addr):
-        data = ''
-        attempts = 0
-        while True:
-            attempts += 1
-            if attempts > 10:
-                raise DFSError("Max Attempts allowed; assuming dead socket")
-            try:
-                data += sock.recv(setup.BUFSIZE)
-                obj = json.loads(data)
-                break
-            except socket.error as ex:
-                print "Error reading from socket -- connection may have broken."
-                sock.close()
-                return
-            except Exception as ex:
-                print "Partial read from " + str(addr) + " -- have not yet receved full JSON."
-                time.sleep(0.05)
-                continue
-
-        if not data:
-            raise DFSError("No data recieved in readJSONFromSock")
-
-        return obj
+        #self.killNode(nodeID)
 
     def killNode(self, nid):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

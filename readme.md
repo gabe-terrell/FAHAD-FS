@@ -1,5 +1,5 @@
-Distributed File System
-=======================
+#### __FAHADFS__ (Failure Averse Highly Available Distributed File System)
+
 
 A distributed file system written in Python.
 
