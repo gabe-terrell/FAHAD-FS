@@ -8,6 +8,7 @@ import threading
 import json
 import errno
 import hashlib
+from threading import Thread
 from subprocess import call
 from filenode_master_protocol import *
 from threaded_server import ThreadedServer
@@ -163,11 +164,6 @@ class FileNode:
                   "\n was raised. Closing socket...\n"
             sock.close()
             return
-
-
-    def initiateMasterConnect(self):
-        socket.
-        pass
 
     def hashForPath(self, path):
         m = hashlib.md5()
@@ -338,42 +334,40 @@ class FileNode:
         # copy the file to some new location (could even be self)
         pass
 
-    def handleExternalFileCopy(self, socket, address, request):
+    def uploadToNode(self, hashed_path, plaintext_path, node_address):
 
-        def upload_to_node(hashed_path, plaintext_path, node_address):
+        def connectToNode(node_address):
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect(node_address)
+            return s
 
-            def Request(path, size):
-                return Request(ReqType.store, path = path, length = size)
+        def messageSocket(s, message):
+            s.send(message.toJson())
+            return readJSONFromSock(s, str(s.getpeername()))
 
-            def connectToNode(node_address):
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.connect(node_address)
-                return s
+        with io.open(hashed_path, 'rb') as file:
+            size = os.path.getsize(hashed_path)
+            s = connectToNode(node_address)
+            res = messageSocket(s, Request(ReqType.store,
+                                            path = plaintext_path, length = size))
 
-            def message_socket(s, message):
-                s.send(message.toJson())
-                return readJSONFromSock(s, str(s.getpeername()))
+            print "Sending data transfer request to filenode"
+            if res and 'type' in res and res['type'] is ResType.ok:
+                pass
+            else:
+                print "Did not receive ack from filenode"
+                raise DFSError("No ack from filenode in 'handleExternalFileCopy'")
 
-            with io.open(hashed_path, 'rb') as file:
-                size = os.path.getsize(hashed_path)
-                s = connectToNode(node_address)
-                res = message_socket(s, Request(plaintext_path, size))
-
-                print "Sending data transfer request to filenode"
-                if res and 'type' in res and res['type'] is FileResponseType.ok:
-                    pass
+            print "Sending data to filenode"
+            while True:
+                data = file.read(setup.BUFSIZE)
+                if data:
+                    s.send(data)
                 else:
-                    print "Did not receive ack from filenode"
-                    raise DFSError("No ack from filenode in 'handleExternalFileCopy'")
+                    break
+            s.close()
 
-                print "Sending data to filenode"
-                while True:
-                    data = file.read(BUFFER_SIZE)
-                    if data:
-                        s.send(data)
-                    else:
-                        break
-                s.close()
+    def handleExternalFileCopy(self, socket, address, request):
 
         try:
             if 'path' in request and 'data' in request:
@@ -383,11 +377,11 @@ class FileNode:
                     ips = addrs['address']
                     ports = addrs['port']
                 else:
-                    self.failureUpdate()
+                    self.failureUpdate(plainpath)
                     socket.close()
                     return
 
-                print "Performing external file copy of " + str(path) + " to " + str(addrs)
+                print "Performing external file copy of " + str(plainpath) + " to " + str(addrs)
                 hashpath = self.hashForPath(plainpath)
                 rawfpath = self.dirpath + '/' + hashpath + RAWFILE_EXT
 
@@ -415,19 +409,17 @@ class FileNode:
                                 uploadThread.start()
 
                 else:
-                    self.failureUpdate()
+                    self.failureUpdate(plainpath)
             else:
-                self.failureUpdate()
+                self.failureUpdate('unknown_path')
 
         except Exception as e:
             raise DFSError("Error in 'handleExternalFileCopy' with value " + str(e))
         socket.close()
 
-    def failureUpdate(self):
+    def failureUpdate(self, path):
         req = Request(ReqType.n2m_update, data = self.nodeID,
                       path = path, status = False)
-
-
 
 
     def handleRename(self, socket, address, request):

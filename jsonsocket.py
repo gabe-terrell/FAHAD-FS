@@ -15,6 +15,7 @@ def readJSONFromSock(sock, addr):
         except socket.error as ex:
             print "Error reading from socket -- connection may have broken."
             sock.close()
+            raise DFSError("Socket broken in readJSONFromSock.")
             return
         except Exception as ex:
             if wait_until < datetime.datetime.now():
