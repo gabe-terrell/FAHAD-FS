@@ -10,3 +10,4 @@ class NodeRec(object):
         self.timeCreated = self.lastModified
         self.address = (IP, PORT)
         self.diskUsage = 0
+        self.hits = 0

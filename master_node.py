@@ -140,6 +140,7 @@ class MasterNode(object):
         for node in self.priorityQueue():
             if node not in nodes:
                 nodesToRecieve.append(node)
+                node.hits += 1
                 if len(nodesToRecieve) == nodesNeedingFile:
                     break
 
@@ -390,7 +391,7 @@ class MasterNode(object):
 
     def priorityQueue(self):
         nodes = self.reg.activenodes.values()
-        nodes.sort(key=lambda n: n.diskUsage, reverse=False)
+        nodes.sort(key=lambda n: (n.diskUsage, n.hits), reverse=False)
         return nodes
 
     def handleUploadRequest(self, socket, path, filesize, filename, checksum):
@@ -408,6 +409,8 @@ class MasterNode(object):
                 try:
                     tprint("Sending upload ACK to client")
                     nodes = self.priorityQueue()[:setup.NODES_PER_FILE]
+                    for node in nodes:
+                        node.hits += 1
                     addrs = [node.address[0] for node in nodes]
                     ports = [node.address[1] for node in nodes]
                     response = ClientResponse(type = ClientRequestType.upload,
