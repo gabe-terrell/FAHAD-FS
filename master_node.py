@@ -733,7 +733,7 @@ def main(argc, argv):
     if argc is 1 and os.path.isfile(setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME):
         print "Loading registry from file..."
         mnode = MasterNode(registryFile = setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME)
-    elif argc is 2:
+    else:
         mnode = MasterNode()
     # if argc > 1 and os.path.isfile(setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME) and argv[1] is '--from-existing':
     #     print "Loading registry from file..."

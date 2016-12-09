@@ -13,7 +13,7 @@ Three main components:
 0. For the first time...
     - ```$ ./setup.sh$``` (will remove filesystem data if run after saving data to filesystem)
 1. Start the Master Node:
-    1. ```$ ./cleanup.sh```
+    1. ```$ ./cleanup.sh [-n -m]``` (-n removes preexising data stored on filenodes, -m removes preexisting records of data from masternode)
     2. Run from file or with a fresh filesystem:
         - ```$ python master_node.py``` (uses default file for initialization)
         - ```$ python master_node.py --fresh-as-a-daisy```
