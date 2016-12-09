@@ -33,7 +33,7 @@ class FileNode:
     def __init__(self, masterAddr = NODESERVER_ADDR, serverPort = NODESERVER_PORT, mode = None):
 
         port = NODESERVER_PORT
-
+        self.server = None
         for i in range(1, setup.N_COPIES):
             try:
                 self.server = ThreadedServer((NODESERVER_ADDR, port),
@@ -45,6 +45,8 @@ class FileNode:
                 else:
                     print "File node server error. Shutting down."
                     sys.exit()
+
+        if self.server is None: sys.exit()
 
         self.nodeID = None
         self.dirpath = None

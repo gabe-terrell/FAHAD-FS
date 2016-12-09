@@ -425,7 +425,6 @@ class MasterNode(object):
                     session = Session(path = serverFile, type = 'upload',
                                              nodeIDs = ids, clientsocket = socket,
                                              dir = dir, checksum = checksum)
-                    print "cs in upload request is: " + str(session.checksum)
                     self.waitForSessionClose(serverFile) # to avoid session overlap
                     self.sessionmutex.acquire()
                     self.sessions[serverFile] = session
@@ -723,11 +722,18 @@ class Unbuffered(object):
    def __getattr__(self, attr):
        return getattr(self.stream, attr)
 
+def usage_error():
+    print "USAGE: python master_node.py --fresh-as-a-daisy"
+    print "USAGE: python master_node.py"
+    sys.exit()
+
 def main(argc, argv):
     sys.stdout = Unbuffered(sys.stdout)
-    if os.path.isfile(setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME):
+
+    if argc is 1 and os.path.isfile(setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME):
+        print "Loading registry from file..."
         mnode = MasterNode(registryFile = setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME)
-    else:
+    elif argc is 2:
         mnode = MasterNode()
     # if argc > 1 and os.path.isfile(setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME) and argv[1] is '--from-existing':
     #     print "Loading registry from file..."
@@ -735,7 +741,6 @@ def main(argc, argv):
     # else:
     #     mnode = MasterNode()
     mnode.start()
-
 
 if __name__ == '__main__':
     main(len(sys.argv), sys.argv)
