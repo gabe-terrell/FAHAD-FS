@@ -4,7 +4,7 @@
 # rm -r ./nodefiles/*
 # rm ./registrydata/reg.data
 
-INITIAL_NODES=30
+INITIAL_NODES=60
 INITIAL_FILES=10
 NUMBER_ROUNDS=5
 MAX_ADDITIONS=10
@@ -50,7 +50,7 @@ function spawnNodes {
 # Spawn a filenode that may attempt to use existing directory or forcively be fresh
 function randomSpawnNode {
 	FRESH=$(($RANDOM % 2))
-	if [ "$FRESH" -eq "0" ]; 
+	if [ "$FRESH" -eq "0" ];
 	then
 		python $FILENODE -fresh > /dev/null &
 	else
@@ -212,4 +212,4 @@ do
 done
 
 printf "End of simulation. Running viewer instance.\n\n"
-cat $VIEWER_INSTRS | python $CLIENT -v 
+cat $VIEWER_INSTRS | python $CLIENT -v

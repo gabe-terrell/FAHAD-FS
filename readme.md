@@ -11,21 +11,21 @@ Three main components:
 #### Usage:
 
 0. For the first time...
-    - ```$ ./setup.sh$```
+    - ```$ ./setup.sh$``` (will remove filesystem data if run after saving data to filesystem)
 1. Start the Master Node:
     1. ```$ ./cleanup.sh```
     2. Run from file or with a fresh filesystem:
-        - ```$ python master_node.py```
-        - ```$ python master_node.py --from-file```
+        - ```$ python master_node.py``` (uses default file for initialization)
+        - ```$ python master_node.py --fresh-as-a-daisy```
 2. Start a File Node:
     - ```$ python file_node.py```
 3. Run a client:
     - ```$ python client.py -v``` (open the filesystem viewer)
     - ```$ python client.py -d [PATH_ON_SERVER] [LOCAL_PATH]``` (download file from filesystem to client machine)
     - ```$ python client.py -u [PATH_ON_SERVER] [LOCAL_PATH]``` (upload file from client machine to filesystem)
-    - ```python client.py --stat <path_on_server>``` (get info on a file)
-    - ```python client.py --mkdir <path_on_server>``` (make a directory)
-    - ```python client.py --rm <path_on_server>``` (remove a file)
+    - ```python client.py --stat [PATH_ON_SERVER]``` (get info on a file)
+    - ```python client.py --mkdir [PATH_ON_SERVER]``` (make a directory)
+    - ```python client.py --rm [PATH_ON_SERVER]``` (remove a file)
 
 
 #### TODO:
