@@ -131,9 +131,20 @@ class MasterNode(object):
     # Used in recovery mode or any situations where a file is under-replicated
     # on the storage cluster (under the amount set in setup.NODES_PER_FILE)
     def duplicateRecord(self, record, nodes):
+        if not nodes:
+            return
+
         nodeWithFile = self.reg.activenodes[random.choice(nodes)]
         nodesNeedingFile = setup.NODES_PER_FILE - len(nodes)
-        nodesToRecieve = self.priorityQueue()[:nodesNeedingFile]
+        nodesToRecieve = []
+        for node in self.priorityQueue():
+            if node not in nodes:
+                nodesToRecieve.append(node)
+                if len(nodesToRecieve) == nodesNeedingFile:
+                    break
+
+        if not nodesToRecieve:
+            return
 
         addrs = [node.address[0] for node in nodesToRecieve]
         ports = [node.address[1] for node in nodesToRecieve]
@@ -170,7 +181,7 @@ class MasterNode(object):
                 if data:
                     request = json.loads(data)
                     if 'type' in request:
-                        print "Raw Client Request: \n " + str(request)
+                        # print "Raw Client Request: \n " + str(request)
                         self.processClientRequest(socket, request, request['type'], viewer)
                     else:
                         raise DFSError("Invalid Client Request")
@@ -380,7 +391,7 @@ class MasterNode(object):
     def priorityQueue(self):
         nodes = self.reg.activenodes.values()
         nodes.sort(key=lambda n: n.diskUsage, reverse=False)
-        return nodes[:setup.NODES_PER_FILE]
+        return nodes
 
     def handleUploadRequest(self, socket, path, filesize, filename, checksum):
 
@@ -396,7 +407,7 @@ class MasterNode(object):
             if dir:
                 try:
                     tprint("Sending upload ACK to client")
-                    nodes = self.priorityQueue()
+                    nodes = self.priorityQueue()[:setup.NODES_PER_FILE]
                     addrs = [node.address[0] for node in nodes]
                     ports = [node.address[1] for node in nodes]
                     response = ClientResponse(type = ClientRequestType.upload,
@@ -714,11 +725,15 @@ class Unbuffered(object):
 
 def main(argc, argv):
     sys.stdout = Unbuffered(sys.stdout)
-    if argc > 1 and os.path.isfile(setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME) and argv[1] is '--from-existing':
-        print "Loading registry from file..."
+    if os.path.isfile(setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME):
         mnode = MasterNode(registryFile = setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME)
     else:
         mnode = MasterNode()
+    # if argc > 1 and os.path.isfile(setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME) and argv[1] is '--from-existing':
+    #     print "Loading registry from file..."
+    #     mnode = MasterNode(registryFile = setup.DEFAULT_MASTERNODE_REGISTRY_FILENAME)
+    # else:
+    #     mnode = MasterNode()
     mnode.start()
 
 
